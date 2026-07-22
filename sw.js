@@ -1,20 +1,25 @@
 /* Twin Things — service worker (офлайн-оболочка).
- * Network-first для навигаций/HTML (свежие обновления), cache-first для статики.
+ * Network-first для ВСЕГО своего origin (HTML + JS + CSS): свежий код всегда из
+ * сети, кэш — только офлайн-фолбэк. Это важно для js/firebase.js: при cache-first
+ * старый конфиг (напр. REPLACE_ME) «залипал» и ломал вход.
  * Cross-origin (Firestore, Storage, OpenAI worker, Google Fonts) — мимо кэша.
  * Поднимай CACHE при выкатке изменений, чтобы старый кэш сбрасывался.
  */
-const CACHE = 'twin-things-v2';
+const CACHE = 'twin-things-v3';
 const ASSETS = [
   './',
   './index.html',
   './item.html',
   './add-item.html',
-  './rooms.html',
   './settings.html',
   './styles.css',
   './voice.js',
   './pwa.js',
   './manifest.json',
+  './js/firebase.js',
+  './js/store.js',
+  './js/catalog-core.js',
+  './js/image.js',
   './icons/icon-192.png',
   './icons/icon-512.png'
 ];
@@ -26,6 +31,11 @@ self.addEventListener('install', (e) => {
       .then(() => self.skipWaiting())
       .catch(() => self.skipWaiting()) // не блокировать install, если ассет 404
   );
+});
+
+// pwa.js просит ждущий SW активироваться немедленно (быстрое обновление на iOS).
+self.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', (e) => {
@@ -42,20 +52,17 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // внешние запросы — в сеть
 
-  if (req.mode === 'navigate' || req.destination === 'document') {
-    e.respondWith(
-      fetch(req)
-        .then((res) => { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); return res; })
-        .catch(() => caches.match(req).then((r) => r || caches.match('./index.html')))
-    );
-    return;
-  }
-
+  // Network-first для всего своего origin: онлайн — всегда свежий код/страница,
+  // офлайн — отдаём последнюю успешную копию из кэша (для навигаций — index.html).
   e.respondWith(
-    caches.match(req).then((cached) =>
-      cached || fetch(req).then((res) => {
-        const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); return res;
+    fetch(req)
+      .then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(req, copy));
+        return res;
       })
-    )
+      .catch(() => caches.match(req).then((r) =>
+        r || (req.mode === 'navigate' || req.destination === 'document'
+          ? caches.match('./index.html') : undefined)))
   );
 });
