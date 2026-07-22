@@ -15,8 +15,8 @@ export {
 } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
 
 export {
-  onAuthStateChanged, GoogleAuthProvider, signInWithPopup,
-  signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut
+  onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
+  getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut
 } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
 
 export {

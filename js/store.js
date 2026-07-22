@@ -10,8 +10,8 @@
 //   catalogs/{cid}/meta/*        — categories | tags | categoryTemplates
 import {
   db, doc, getDoc, setDoc, deleteDoc, collection, getDocs, query, where,
-  auth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup,
-  signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut,
+  auth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
+  getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut,
   storage, storageRef, uploadBytes, getDownloadURL, deleteObject,
 } from './firebase.js';
 import {
@@ -29,9 +29,16 @@ onAuthStateChanged(auth, user => { currentUser = user; });
 
 let firstAuth = null;
 export function initAuth() {
-  if (!firstAuth) firstAuth = new Promise(resolve => {
-    const off = onAuthStateChanged(auth, user => { off(); currentUser = user; resolve(user); });
-  });
+  if (!firstAuth) firstAuth = (async () => {
+    // Завершаем возможный вход через redirect (мобильные/заблокированные попапы).
+    try {
+      const res = await getRedirectResult(auth);
+      if (res?.user) { currentUser = res.user; await ensureUserDoc(); }
+    } catch (e) { console.warn('getRedirectResult:', e?.code || e); }
+    return await new Promise(resolve => {
+      const off = onAuthStateChanged(auth, user => { off(); currentUser = user; resolve(user); });
+    });
+  })();
   return firstAuth;
 }
 
@@ -40,11 +47,28 @@ export function currentUserEmail() { return currentUser?.email || ''; }
 export function currentUserName() { return currentUser?.displayName || ''; }
 
 // ── Вход/выход ──────────────────────────────────────────────────────────────
+// Коды, при которых попап недоступен (мобильные, блокировщики) → уходим в redirect.
+const POPUP_FALLBACK = new Set([
+  'auth/popup-blocked',
+  'auth/cancelled-popup-request',
+  'auth/operation-not-supported-in-this-environment',
+  'auth/web-storage-unsupported',
+]);
+// Возвращает cred при успехе попапа или null, если стартовал redirect (страница уйдёт).
 export async function signInGoogle() {
-  const cred = await signInWithPopup(auth, new GoogleAuthProvider());
-  currentUser = cred.user;
-  await ensureUserDoc();
-  return cred;
+  const provider = new GoogleAuthProvider();
+  try {
+    const cred = await signInWithPopup(auth, provider);
+    currentUser = cred.user;
+    await ensureUserDoc();
+    return cred;
+  } catch (e) {
+    if (POPUP_FALLBACK.has(e?.code)) {
+      await signInWithRedirect(auth, provider); // навигация уводит со страницы
+      return null;
+    }
+    throw e;
+  }
 }
 export async function signInEmail(email, pass) {
   const cred = await signInWithEmailAndPassword(auth, email, pass);
@@ -60,16 +84,24 @@ export async function registerEmail(email, pass) {
 }
 export function signOutUser() { return signOut(auth); }
 
+// Best-effort: создать профиль users/{uid}. НЕ роняем сам вход, если Firestore
+// временно недоступен/правила не задеплоены — иначе успешная авторизация
+// выглядит как «ошибка входа». Реальная проблема с правами всплывёт при работе
+// с каталогом (ensureFirstCatalog / refresh) с понятным сообщением.
 async function ensureUserDoc() {
   const uid = currentUid();
   if (!uid) return;
-  const ref = doc(db, 'users', uid);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) {
-    await setDoc(ref, {
-      displayName: currentUserName(), email: currentUserEmail(),
-      createdAt: new Date().toISOString(),
-    });
+  try {
+    const ref = doc(db, 'users', uid);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      await setDoc(ref, {
+        displayName: currentUserName(), email: currentUserEmail(),
+        createdAt: new Date().toISOString(),
+      });
+    }
+  } catch (e) {
+    console.warn('ensureUserDoc (проверь firestore.rules):', e?.code || e);
   }
 }
 

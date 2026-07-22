@@ -117,18 +117,53 @@
     function show(el) { el.style.display = el === $('app') ? 'block' : (el === $('auth') ? 'flex' : 'block'); }
     function hide(el) { el.style.display = 'none'; }
 
+    // Понятный текст по коду ошибки Firebase (Auth + Firestore permission).
+    function authError(e) {
+      const code = e?.code || '';
+      const map = {
+        'auth/unauthorized-domain': 'Домен не разрешён: Firebase → Authentication → Settings → Authorized domains → добавь natalyatsarapaeva-tech.github.io.',
+        'auth/operation-not-allowed': 'Провайдер входа не включён: Firebase → Authentication → Sign-in method (включи Google и Email/Password).',
+        'auth/popup-blocked': 'Браузер заблокировал всплывающее окно. Разреши попапы и попробуй снова (или переключимся на redirect).',
+        'auth/popup-closed-by-user': 'Окно входа закрыли до завершения — попробуй ещё раз.',
+        'auth/invalid-api-key': 'Неверный apiKey в js/firebase.js.',
+        'auth/invalid-credential': 'Неверный email или пароль.',
+        'auth/wrong-password': 'Неверный пароль.',
+        'auth/user-not-found': 'Пользователь не найден — зарегистрируйся.',
+        'auth/email-already-in-use': 'Этот email уже зарегистрирован — войди.',
+        'auth/weak-password': 'Пароль слишком короткий (минимум 6 символов).',
+        'auth/network-request-failed': 'Сеть недоступна или запрос заблокирован.',
+        'permission-denied': 'Вход прошёл, но нет доступа к базе — задеплой firestore.rules (и storage.rules).',
+      };
+      if (map[code]) return map[code];
+      if (/permission/i.test(code) || /permission/i.test(e?.message || '')) return map['permission-denied'];
+      return 'Ошибка входа: ' + (code || e?.message || 'неизвестно');
+    }
+
     // ── Поток запуска ──
     (async function boot() {
-      const user = await initAuth();
-      hide($('loading'));
-      if (user) await enterApp();
-      else show($('auth'));
-    })().catch(err => { hide($('loading')); show($('auth')); console.error(err); });
+      try {
+        const user = await initAuth();
+        hide($('loading'));
+        if (!user) { show($('auth')); return; }
+        // Авторизация уже есть — если дальше упадёт (правила и т.п.), покажем
+        // причину на экране входа, а не молча вернём к логину.
+        try { await enterApp(); }
+        catch (e) { console.error(e); show($('auth')); $('auth-error').textContent = authError(e); }
+      } catch (err) {
+        console.error(err); hide($('loading')); show($('auth')); $('auth-error').textContent = authError(err);
+      }
+    })();
 
     // ── Вход ──
     $('btn-google').onclick = async () => {
-      try { await signInGoogle(); await enterApp(); }
-      catch (e) { $('auth-error').textContent = 'Не удалось войти через Google.'; console.error(e); }
+      $('auth-error').textContent = '';
+      $('btn-google').disabled = true;
+      try {
+        const cred = await signInGoogle();
+        if (cred) await enterApp(); // null → пошёл redirect, страница уйдёт
+      } catch (e) {
+        console.error(e); $('auth-error').textContent = authError(e);
+      } finally { $('btn-google').disabled = false; }
     };
     $('btn-toggle-mode').onclick = () => {
       mode = mode === 'signin' ? 'register' : 'signin';
@@ -140,14 +175,15 @@
     $('btn-email').onclick = async () => {
       const email = $('in-email').value.trim(), pass = $('in-pass').value;
       if (!email || !pass) { $('auth-error').textContent = 'Введи email и пароль.'; return; }
+      $('auth-error').textContent = '';
+      $('btn-email').disabled = true;
       try {
         if (mode === 'signin') await signInEmail(email, pass);
         else await registerEmail(email, pass);
         await enterApp();
       } catch (e) {
-        $('auth-error').textContent = 'Ошибка входа: ' + (e.code || e.message);
-        console.error(e);
-      }
+        console.error(e); $('auth-error').textContent = authError(e);
+      } finally { $('btn-email').disabled = false; }
     };
 
     // ── Вход в приложение ──
