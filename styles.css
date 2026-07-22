@@ -163,7 +163,23 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .sort-select{flex:0 0 auto;width:auto;padding:11px 34px 11px 12px;font-size:13px;}
 .filter-scroll{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;}
 .filter-scroll .chip{white-space:nowrap;flex:0 0 auto;padding:6px 12px;}
-.filter-clear{align-self:flex-start;background:none;border:none;color:var(--blue);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;padding:2px 0;}
+.filter-clear{background:none;border:none;color:var(--blue);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;padding:2px 0;}
+.toolbar-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.select-toggle{margin-left:auto;background:var(--surface2);border:none;color:var(--slate);font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;padding:6px 12px;border-radius:16px;}
+.select-toggle.on{background:var(--blue);color:#fff;}
+
+/* ── Выбор карточек (массовые действия) ── */
+.item-card{position:relative;}
+.sel-check{position:absolute;top:8px;left:8px;width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.92);border:2px solid var(--blue);display:flex;align-items:center;justify-content:center;color:transparent;font-weight:700;font-size:14px;z-index:2;}
+.item-card.picked{outline:3px solid var(--blue);outline-offset:-1px;}
+.item-card.picked .sel-check{background:var(--blue);color:#fff;}
+
+/* ── Панель массовых действий ── */
+.bulk-bar{position:fixed;left:0;right:0;bottom:0;z-index:150;background:var(--white);box-shadow:0 -4px 24px var(--shadow);border-radius:20px 20px 0 0;padding:12px 16px calc(14px + env(safe-area-inset-bottom));display:none;flex-direction:column;gap:8px;}
+.bulk-bar.on{display:flex;}
+.bulk-top{display:flex;align-items:center;justify-content:space-between;}
+.bulk-count{font-weight:700;color:var(--slate);font-family:'Spectral',serif;}
+.bulk-top button{background:none;border:none;color:var(--blue);font-size:14px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
 
 /* ── Редактор таксономии (settings) ── */
 .tax-list{display:flex;flex-direction:column;gap:8px;}

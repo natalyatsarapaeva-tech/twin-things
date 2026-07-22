@@ -57,18 +57,37 @@
         <select class="select-input sort-select" id="sort"></select>
       </div>
       <div class="filter-scroll" id="filters"></div>
-      <button class="filter-clear" id="filter-clear" style="display:none;">Сбросить фильтры</button>
+      <div class="toolbar-foot">
+        <button class="filter-clear" id="filter-clear" style="display:none;">Сбросить фильтры</button>
+        <button class="select-toggle" id="select-toggle">☑︎ Выбрать</button>
+      </div>
     </div>
 
     <main class="items-grid" id="items-grid">
       <!-- наполняется карточками -->
     </main>
 
-    <div class="fab-group">
+    <div class="fab-group" id="fab-group">
       <a class="fab fab-set" href="settings.html" title="Настройки">⚙</a>
       <a class="fab fab-ai" href="add-item.html#ai" title="AI-добавление">✨</a>
       <a class="fab" href="add-item.html" title="Добавить вещь">＋</a>
     </div>
+
+    <!-- Панель массовых действий -->
+    <div class="bulk-bar" id="bulk-bar">
+      <div class="bulk-top">
+        <button id="bulk-cancel">Отмена</button>
+        <span class="bulk-count" id="bulk-count">Выбрано: 0</span>
+        <button id="bulk-all">Выбрать все</button>
+      </div>
+      <div class="hint">Присвоить статус выбранным:</div>
+      <div class="chip-row" id="bulk-status"></div>
+      <button class="btn btn-danger btn-block" id="bulk-delete" disabled>🗑 Удалить выбранное</button>
+    </div>
+  </div>
+
+  <div class="saving-overlay" id="saving">
+    <div class="saving-box"><span class="spinner"></span><span id="saving-text">Готово…</span></div>
   </div>
 
   <!-- Свитчер каталогов -->
@@ -94,6 +113,7 @@
       signInGoogle, signInEmail, registerEmail, signOutUser,
       listMyCatalogs, ensureFirstCatalog, getActiveCatalogId, setActiveCatalogId,
       resolveActiveCatalog, createCatalog, joinCatalogByCode, listItems, loadTaxonomy,
+      saveItem, deleteItem,
     } from './js/store.js';
     import {
       filterItems, sortItems, catalogStats, primaryPhoto, labelOf,
@@ -106,6 +126,7 @@
 
     // Состояние грида
     let allItems = [];
+    let activeCid = null;
     let taxonomy = { categories: [], tags: [], templates: {} };
     let sortKey = localStorage.getItem('itemsSort') || 'newest';
     const filters = { text: '', category: '', tag: '', status: '' };
@@ -194,6 +215,7 @@
       const avatar = $('avatar');
       const name = currentUserName() || currentUserEmail() || '?';
       avatar.textContent = name.trim().charAt(0).toUpperCase() || '?';
+      buildBulkStatus();
       show($('app'));
       await refresh();
     }
@@ -201,6 +223,7 @@
     async function refresh() {
       const cats = await listMyCatalogs();
       const activeId = resolveActiveCatalog(cats);
+      activeCid = activeId;
       const active = cats.find(c => c.id === activeId);
       $('cs-name').textContent = active?.name || 'Каталог';
       $('stat-role').textContent = active?.role === 'owner' ? '👑 владелец' : '✎ редактор';
@@ -278,9 +301,10 @@
       syncChipState(); applyFilters();
     };
 
+    let visibleItems = [];   // текущий отфильтрованный/отсортированный список
     function applyFilters() {
-      const filtered = sortItems(filterItems(allItems, filters), sortKey);
-      renderItems(filtered);
+      visibleItems = sortItems(filterItems(allItems, filters), sortKey);
+      renderItems(visibleItems);
     }
 
     function renderItems(items) {
@@ -306,7 +330,9 @@
           : `<div class="item-thumb placeholder">📦</div>`;
         const tags = (it.tags || []).slice(0, 3)
           .map(t => `<span class="item-tag">${esc(labelOf(taxonomy.tags, t))}</span>`).join('');
-        return `<button class="item-card fade-in" onclick="location.href='item.html?id=${encodeURIComponent(it.id)}'">
+        const isPicked = picked.has(it.id);
+        return `<button class="item-card fade-in${isPicked ? ' picked' : ''}" data-id="${esc(it.id)}">
+          ${selectMode ? '<span class="sel-check">✓</span>' : ''}
           ${thumb}
           <div class="item-body">
             <div class="item-name">${esc(it.name || 'Без названия')}</div>
@@ -315,7 +341,101 @@
           </div>
         </button>`;
       }).join('');
+      grid.querySelectorAll('.item-card').forEach(card => {
+        card.onclick = () => {
+          const id = card.dataset.id;
+          if (selectMode) togglePick(id, card);
+          else location.href = `item.html?id=${encodeURIComponent(id)}`;
+        };
+      });
     }
+
+    // ── Массовый выбор ──────────────────────────────────────────────────────
+    let selectMode = false;
+    const picked = new Set();
+
+    function buildBulkStatus() {
+      $('bulk-status').innerHTML = ITEM_STATUSES
+        .map(s => `<button type="button" class="chip" data-status="${s}">${esc(statusLabel(s))}</button>`).join('');
+      $('bulk-status').querySelectorAll('.chip').forEach(ch => ch.onclick = () => applyBulkStatus(ch.dataset.status));
+    }
+
+    function setSelectMode(on) {
+      selectMode = on;
+      if (!on) picked.clear();
+      $('bulk-bar').classList.toggle('on', on);
+      $('fab-group').style.display = on ? 'none' : '';
+      $('select-toggle').classList.toggle('on', on);
+      $('select-toggle').textContent = on ? '✕ Готово' : '☑︎ Выбрать';
+      updateBulkBar();
+      renderItems(visibleItems);
+    }
+    $('select-toggle').onclick = () => setSelectMode(!selectMode);
+    $('bulk-cancel').onclick = () => setSelectMode(false);
+
+    function togglePick(id, card) {
+      if (picked.has(id)) { picked.delete(id); card.classList.remove('picked'); }
+      else { picked.add(id); card.classList.add('picked'); }
+      updateBulkBar();
+    }
+    function updateBulkBar() {
+      $('bulk-count').textContent = `Выбрано: ${picked.size}`;
+      $('bulk-delete').disabled = !picked.size;
+      const allVisiblePicked = visibleItems.length && visibleItems.every(it => picked.has(it.id));
+      $('bulk-all').textContent = allVisiblePicked ? 'Снять все' : 'Выбрать все';
+    }
+    $('bulk-all').onclick = () => {
+      const allVisiblePicked = visibleItems.length && visibleItems.every(it => picked.has(it.id));
+      if (allVisiblePicked) picked.clear();
+      else visibleItems.forEach(it => picked.add(it.id));
+      updateBulkBar();
+      renderItems(visibleItems);
+    };
+
+    async function applyBulkStatus(status) {
+      const ids = [...picked];
+      if (!ids.length) { toast('Ничего не выбрано'); return; }
+      $('saving').classList.add('on');
+      try {
+        let n = 0;
+        for (const id of ids) {
+          const it = allItems.find(x => x.id === id);
+          if (!it) continue;
+          n++; $('saving-text').textContent = `Меняю статус ${n}/${ids.length}…`;
+          it.status = status;
+          await saveItem(activeCid, it);
+        }
+        $('saving').classList.remove('on');
+        setSelectMode(false);
+        toast(`Статус «${statusLabel(status)}» — ${n} шт.`);
+        await refresh();
+      } catch (err) {
+        console.error(err); $('saving').classList.remove('on');
+        toast('Не удалось изменить статус');
+      }
+    }
+    $('bulk-delete').onclick = async () => {
+      const ids = [...picked];
+      if (!ids.length) return;
+      if (!confirm(`Удалить выбранное (${ids.length})? Действие нельзя отменить.`)) return;
+      $('saving').classList.add('on');
+      try {
+        let n = 0;
+        for (const id of ids) {
+          const it = allItems.find(x => x.id === id);
+          if (!it) continue;
+          n++; $('saving-text').textContent = `Удаляю ${n}/${ids.length}…`;
+          await deleteItem(activeCid, it);
+        }
+        $('saving').classList.remove('on');
+        setSelectMode(false);
+        toast(`Удалено: ${n}`);
+        await refresh();
+      } catch (err) {
+        console.error(err); $('saving').classList.remove('on');
+        toast('Не удалось удалить');
+      }
+    };
 
     function renderCatalogList(cats, activeId) {
       $('catalog-list').innerHTML = cats.map(c => `
@@ -326,6 +446,7 @@
       $('catalog-list').querySelectorAll('.catalog-row').forEach(row => {
         row.onclick = async () => {
           setActiveCatalogId(row.dataset.cid);
+          if (selectMode) setSelectMode(false);
           closeSwitch(); await refresh();
         };
       });
