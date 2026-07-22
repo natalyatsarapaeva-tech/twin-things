@@ -21,17 +21,23 @@ export async function gpt(payload) {
 
 // Системный промпт получает АКТУАЛЬНУЮ таксономию каталога (из meta/*, не хардкод)
 // и требует «только JSON, категории/теги — только из предложенных id» (§9).
-function systemPrompt(categories, tags) {
+// photoCount>0 — vision-режим: просим у модели photoIndex, чтобы привязать одно
+// фото к одной карточке (а не все фото ко всем).
+function systemPrompt(categories, tags, photoCount = 0) {
   const cats = categories.map(c => `${c.id} (${c.label})`).join(', ') || 'generic (Разное)';
   const tg = tags.map(t => `${t.id} (${t.label})`).join(', ') || '—';
+  const photoField = photoCount > 0 ? ',"photoIndex":<номер фото>' : '';
+  const photoRule = photoCount > 0
+    ? `\n- photoIndex — номер фотографии (0..${photoCount - 1}), на которой находится эта вещь. Фото переданы по порядку. Обычно одна вещь = одно фото; если на одном фото несколько вещей, у них одинаковый photoIndex.`
+    : '';
   return `Ты помощник по учёту домашних вещей. Верни ТОЛЬКО JSON-массив, без markdown и пояснений:
-[{"name":"...","description":"...","category":"<один id категории>","tags":["<id тегов>"],"characteristics":[{"label":"...","value":"...","type":"text|number|money|date|select"}]}]
+[{"name":"...","description":"...","category":"<один id категории>","tags":["<id тегов>"],"characteristics":[{"label":"...","value":"...","type":"text|number|money|date|select"}]${photoField}}]
 
 Правила:
 - name — короткое название вещи на русском.
 - category — РОВНО ОДИН id из списка: ${cats}. Если не уверен — "generic".
 - tags — ноль или несколько id ТОЛЬКО из: ${tg}. Не выдумывай новых.
-- characteristics — уместные известные факты (бренд, модель, цена, размер, материал…); значения на русском; для цены type "money", для дат "date", для чисел "number".
+- characteristics — уместные известные факты (бренд, модель, цена, размер, материал…); значения на русском; для цены type "money", для дат "date", для чисел "number".${photoRule}
 - Не добавляй категории или теги вне указанных id. Каждая распознанная вещь — отдельный объект массива.`;
 }
 
@@ -52,17 +58,20 @@ export async function aiItemsFromText(text, categories, tags) {
 
 // Фото → черновики вещей (§8.1, vision). base64List — JPEG без префикса data:.
 export async function aiItemsFromPhotos(base64List, categories, tags) {
-  const images = (base64List || []).map(b => ({
+  const list = base64List || [];
+  const images = list.map(b => ({
     type: 'image_url',
     image_url: { url: `data:image/jpeg;base64,${b}`, detail: 'high' },
   }));
   const data = await gpt({
     model: 'gpt-4o', max_tokens: 2000, temperature: 0,
     messages: [
-      { role: 'system', content: systemPrompt(categories, tags) },
-      { role: 'user', content: [...images, { type: 'text', text: 'Определи все вещи на фото и верни JSON-массив.' }] },
+      { role: 'system', content: systemPrompt(categories, tags, list.length) },
+      { role: 'user', content: [...images, { type: 'text', text: 'Определи вещи на фото и верни JSON-массив. У каждой вещи укажи photoIndex — номер фото, на котором она есть.' }] },
     ],
   });
   const content = data.choices?.[0]?.message?.content || '';
-  return sanitizeAiItems(parseAiJsonArray(content), { categoryIds: ids(categories), tagIds: ids(tags) });
+  return sanitizeAiItems(parseAiJsonArray(content), {
+    categoryIds: ids(categories), tagIds: ids(tags), photoCount: list.length,
+  });
 }

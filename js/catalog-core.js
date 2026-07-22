@@ -314,7 +314,7 @@ export function parseAiJsonArray(content) {
 // Приводит сырой ответ ИИ к чистым черновикам вещей, ограниченным таксономией
 // каталога: категория — ровно один известный id (иначе 'generic'/первый), теги —
 // только известные id, характеристики — пары {label,value,type} с валидным type.
-export function sanitizeAiItems(raw, { categoryIds = [], tagIds = [] } = {}) {
+export function sanitizeAiItems(raw, { categoryIds = [], tagIds = [], photoCount = 0 } = {}) {
   const cats = new Set(categoryIds);
   const tags = new Set(tagIds);
   const fallbackCat = cats.has('generic') ? 'generic' : (categoryIds[0] || 'generic');
@@ -333,7 +333,12 @@ export function sanitizeAiItems(raw, { categoryIds = [], tagIds = [] } = {}) {
         type: CHAR_TYPES.includes(c?.type) ? c.type : 'text',
       }))
       .filter(c => c.label || c.value);
-    out.push({ name, description: String(r.description || '').trim(), category, tags: itemTags, characteristics });
+    const draft = { name, description: String(r.description || '').trim(), category, tags: itemTags, characteristics };
+    // Индекс фото, на котором вещь (vision-режим): для привязки одного фото к
+    // одной карточке, а не всех фото ко всем. Валидируем как целое >= 0.
+    const pi = Number(r.photoIndex);
+    if (Number.isInteger(pi) && pi >= 0 && (photoCount <= 0 || pi < photoCount)) draft.photoIndex = pi;
+    out.push(draft);
   }
   return out;
 }

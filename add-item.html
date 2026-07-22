@@ -415,36 +415,48 @@
     let allOn = true;
     function toggleAll(){ allOn = !allOn; draftSel = draftSel.map(() => allOn); renderAiResults(aiSource); }
 
+    // Какое фото прикрепить к вещи (одно, не все). Приоритет: photoIndex от ИИ →
+    // позиционное соответствие 1:1 (снимал по одной вещи на фото) → единственное
+    // фото ко всем → без фото. origIdx — позиция черновика в общем списке drafts.
+    function photoIndexFor(d, origIdx){
+      if (aiSource !== 'ai-photo' || !aiPhotos.length) return -1;
+      if (Number.isInteger(d.photoIndex) && d.photoIndex >= 0 && d.photoIndex < aiPhotos.length) return d.photoIndex;
+      if (aiPhotos.length === drafts.length) return origIdx;   // 1:1 по порядку
+      if (aiPhotos.length === 1) return 0;                     // одно фото — общее
+      return -1;
+    }
+
     // Сохранить выбранные черновики в активный каталог
     async function saveSelected(){
-      const chosen = drafts.filter((_, i) => draftSel[i]).filter(d => (d.name||'').trim());
+      const chosen = [];
+      drafts.forEach((d, i) => { if (draftSel[i] && (d.name||'').trim()) chosen.push({ d, i }); });
       if (!chosen.length) { toast('Отметь хотя бы одну вещь'); return; }
       $('btn-save-ai').disabled = true;
       busy(true, 'Сохраняю…');
       try {
-        // Для фото — грузим исходники один раз, дескрипторы переиспользуем на всех вещах
-        // (кроп по объектам — v2; сейчас исходные фото прикрепляются ко всем найденным).
-        let savedCount = 0;
-        for (const d of chosen) {
+        // Кэш загруженных фото по индексу — каждый исходник грузим в Storage ОДИН раз,
+        // даже если его делят несколько вещей (кроп по объектам — v2).
+        const uploaded = new Map();
+        let n = 0;
+        for (const { d, i } of chosen) {
+          n++;
           const item = makeItem({
             name: d.name.trim(), description: d.description || '', category: d.category,
             tags: d.tags || [], characteristics: d.characteristics || [],
             source: aiSource, aiGenerated: true, createdBy: currentUid(),
           });
-          if (aiSource === 'ai-photo' && aiPhotos.length) {
-            const photos = [];
-            for (let i = 0; i < aiPhotos.length; i++) {
-              busy(true, `Вещь ${savedCount+1}/${chosen.length}: фото ${i+1}/${aiPhotos.length}…`);
-              photos.push(await uploadItemPhoto(cid, item.id, aiPhotos[i].file, i, i===0));
-            }
-            item.photos = photos;
+          const pi = photoIndexFor(d, i);
+          if (pi >= 0) {
+            busy(true, `Вещь ${n}/${chosen.length}: загружаю фото…`);
+            let desc = uploaded.get(pi);
+            if (!desc) { desc = await uploadItemPhoto(cid, item.id, aiPhotos[pi].file, 0, true); uploaded.set(pi, desc); }
+            item.photos = [{ ...desc, isPrimary: true }];
           }
-          busy(true, `Сохраняю ${savedCount+1}/${chosen.length}…`);
+          busy(true, `Сохраняю ${n}/${chosen.length}…`);
           await saveItem(cid, item);
-          savedCount++;
         }
         aiPhotos.forEach(p => URL.revokeObjectURL(p.url));
-        toast(`Сохранено: ${savedCount}`);
+        toast(`Сохранено: ${chosen.length}`);
         setTimeout(() => location.href = 'index.html', 900);
       } catch (err) {
         console.error(err); busy(false); $('btn-save-ai').disabled = false;

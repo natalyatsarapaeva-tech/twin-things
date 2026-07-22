@@ -63,6 +63,27 @@ test('sanitizeAiItems: характеристики — валидный type, �
   assert.ok(CHAR_TYPES.includes('money') && CHAR_TYPES.includes('date'));
 });
 
+test('sanitizeAiItems: photoIndex — целое в диапазоне [0,photoCount), иначе нет поля', () => {
+  const opts = { categoryIds: ['generic'], photoCount: 3 };
+  const out = sanitizeAiItems([
+    { name: 'A', photoIndex: 0 },
+    { name: 'B', photoIndex: 2 },
+    { name: 'C', photoIndex: 5 },   // вне диапазона → отброшен
+    { name: 'D', photoIndex: -1 },  // отрицательный → отброшен
+    { name: 'E' },                  // нет поля
+    { name: 'F', photoIndex: 1.5 }, // не целое → отброшен
+  ], opts);
+  assert.equal(out[0].photoIndex, 0);
+  assert.equal(out[1].photoIndex, 2);
+  assert.ok(!('photoIndex' in out[2]));
+  assert.ok(!('photoIndex' in out[3]));
+  assert.ok(!('photoIndex' in out[4]));
+  assert.ok(!('photoIndex' in out[5]));
+  // без photoCount — любой валидный неотрицательный целый проходит
+  const noCount = sanitizeAiItems([{ name: 'X', photoIndex: 9 }], { categoryIds: ['generic'] });
+  assert.equal(noCount[0].photoIndex, 9);
+});
+
 test('sanitizeAiItems: не-массив на входе → пустой результат', () => {
   assert.deepEqual(sanitizeAiItems(null, {}), []);
   assert.deepEqual(sanitizeAiItems({}, {}), []);
