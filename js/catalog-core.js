@@ -283,3 +283,56 @@ export function addTaxonomyEntry(list, label) {
   const entry = { id, label: trimmed };
   return { list: [...(list || []), entry], entry };
 }
+
+// ── AI-импорт: разбор и санитайзинг ответа модели (§9) ──────────────────────
+// Типы виджетов характеристик (см. §5.2). Всё прочее приводим к 'text'.
+export const CHAR_TYPES = ['text', 'number', 'money', 'date', 'select'];
+
+// Убирает markdown-ограждение ```json … ``` вокруг ответа модели.
+export function stripJsonFences(text) {
+  return String(text || '').trim()
+    .replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
+}
+
+// Достаёт JSON-массив из ответа модели. Фолбэк: вырезать первый [...] блок,
+// если модель добавила лишний текст вокруг.
+export function parseAiJsonArray(content) {
+  const cleaned = stripJsonFences(content);
+  try {
+    const v = JSON.parse(cleaned);
+    if (Array.isArray(v)) return v;
+    if (v && Array.isArray(v.items)) return v.items;
+  } catch (_) { /* попробуем вырезать массив ниже */ }
+  const s = cleaned.indexOf('['), e = cleaned.lastIndexOf(']');
+  if (s !== -1 && e > s) {
+    try { const v = JSON.parse(cleaned.slice(s, e + 1)); if (Array.isArray(v)) return v; } catch (_) {}
+  }
+  return [];
+}
+
+// Приводит сырой ответ ИИ к чистым черновикам вещей, ограниченным таксономией
+// каталога: категория — ровно один известный id (иначе 'generic'/первый), теги —
+// только известные id, характеристики — пары {label,value,type} с валидным type.
+export function sanitizeAiItems(raw, { categoryIds = [], tagIds = [] } = {}) {
+  const cats = new Set(categoryIds);
+  const tags = new Set(tagIds);
+  const fallbackCat = cats.has('generic') ? 'generic' : (categoryIds[0] || 'generic');
+  const arr = Array.isArray(raw) ? raw : [];
+  const out = [];
+  for (const r of arr) {
+    if (!r || typeof r !== 'object') continue;
+    const name = String(r.name || r.title || '').trim();
+    if (!name) continue;
+    const category = cats.has(r.category) ? r.category : fallbackCat;
+    const itemTags = Array.isArray(r.tags) ? r.tags.filter(t => tags.has(t)) : [];
+    const characteristics = (Array.isArray(r.characteristics) ? r.characteristics : [])
+      .map(c => ({
+        label: String(c?.label || '').trim(),
+        value: String(c?.value ?? '').trim(),
+        type: CHAR_TYPES.includes(c?.type) ? c.type : 'text',
+      }))
+      .filter(c => c.label || c.value);
+    out.push({ name, description: String(r.description || '').trim(), category, tags: itemTags, characteristics });
+  }
+  return out;
+}

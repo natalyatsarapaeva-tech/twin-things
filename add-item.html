@@ -24,70 +24,102 @@
     </header>
 
     <main class="page-body">
-      <!-- Фото -->
-      <div class="field-group">
-        <label class="field-label">Фото</label>
-        <div class="photo-strip" id="photo-strip">
-          <label class="photo-add" id="photo-add">
-            <span class="pa-icon">＋</span>
-            <span>Добавить</span>
-            <input type="file" accept="image/*" multiple hidden id="photo-input">
-          </label>
-        </div>
-        <div class="hint">Первое фото — обложка. Фото можно добавить и позже.</div>
+      <!-- Переключатель режима -->
+      <div class="mode-switch">
+        <button class="chip on" id="mode-manual" type="button">✍️ Вручную</button>
+        <button class="chip" id="mode-ai" type="button">✨ С помощью ИИ</button>
       </div>
 
-      <!-- Название -->
-      <div class="field-group">
-        <label class="field-label" for="f-name">Название *</label>
-        <input class="field-input" id="f-name" placeholder="Напр. Дрель Bosch GSB 13" autocomplete="off">
-      </div>
-
-      <!-- Категория -->
-      <div class="field-group">
-        <label class="field-label" for="f-category">Категория</label>
-        <select class="select-input" id="f-category"></select>
-        <div class="hint">При смене категории подставляются рекомендованные характеристики.</div>
-      </div>
-
-      <!-- Теги -->
-      <div class="field-group">
-        <label class="field-label">Теги</label>
-        <div class="chip-row" id="tag-chips"></div>
-      </div>
-
-      <!-- Характеристики -->
-      <div class="field-group">
-        <label class="field-label">Характеристики</label>
-        <div class="char-editor" id="char-editor"></div>
-        <button class="add-field-btn" id="btn-add-char" type="button">＋ добавить поле</button>
-      </div>
-
-      <!-- Локация / количество -->
-      <div class="row-2">
+      <!-- ── Ручной режим ── -->
+      <div id="manual-mode">
         <div class="field-group">
-          <label class="field-label" for="f-location">Локация</label>
-          <input class="field-input" id="f-location" placeholder="Гараж / полка 2" autocomplete="off">
+          <label class="field-label">Фото</label>
+          <div class="photo-strip" id="photo-strip">
+            <label class="photo-add" id="photo-add">
+              <span class="pa-icon">＋</span>
+              <span>Добавить</span>
+              <input type="file" accept="image/*" multiple hidden id="photo-input">
+            </label>
+          </div>
+          <div class="hint">Первое фото — обложка. Фото можно добавить и позже.</div>
         </div>
+
         <div class="field-group">
-          <label class="field-label" for="f-quantity">Количество</label>
-          <input class="field-input" id="f-quantity" type="number" min="1" value="1">
+          <label class="field-label" for="f-name">Название *</label>
+          <input class="field-input" id="f-name" placeholder="Напр. Дрель Bosch GSB 13" autocomplete="off">
         </div>
+
+        <div class="field-group">
+          <label class="field-label" for="f-category">Категория</label>
+          <select class="select-input" id="f-category"></select>
+          <div class="hint">При смене категории подставляются рекомендованные характеристики.</div>
+        </div>
+
+        <div class="field-group">
+          <label class="field-label">Теги</label>
+          <div class="chip-row" id="tag-chips"></div>
+        </div>
+
+        <div class="field-group">
+          <label class="field-label">Характеристики</label>
+          <div class="char-editor" id="char-editor"></div>
+          <button class="add-field-btn" id="btn-add-char" type="button">＋ добавить поле</button>
+        </div>
+
+        <div class="row-2">
+          <div class="field-group">
+            <label class="field-label" for="f-location">Локация</label>
+            <input class="field-input" id="f-location" placeholder="Гараж / полка 2" autocomplete="off">
+          </div>
+          <div class="field-group">
+            <label class="field-label" for="f-quantity">Количество</label>
+            <input class="field-input" id="f-quantity" type="number" min="1" value="1">
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label class="field-label">Статус</label>
+          <div class="chip-row" id="status-chips"></div>
+        </div>
+
+        <div class="field-group">
+          <label class="field-label" for="f-description">Описание</label>
+          <textarea class="field-textarea" id="f-description" placeholder="Свободное описание вещи…"></textarea>
+        </div>
+
+        <button class="btn btn-primary btn-block" id="btn-save">Сохранить вещь</button>
       </div>
 
-      <!-- Статус -->
-      <div class="field-group">
-        <label class="field-label">Статус</label>
-        <div class="chip-row" id="status-chips"></div>
-      </div>
+      <!-- ── AI-режим ── -->
+      <div id="ai-mode" style="display:none;">
+        <div class="ai-tabs">
+          <button class="chip on" id="ai-tab-photo" type="button">📷 По фото</button>
+          <button class="chip" id="ai-tab-text" type="button">📝 По тексту</button>
+        </div>
 
-      <!-- Описание -->
-      <div class="field-group">
-        <label class="field-label" for="f-description">Описание</label>
-        <textarea class="field-textarea" id="f-description" placeholder="Свободное описание вещи…"></textarea>
-      </div>
+        <!-- Фото → вещи -->
+        <div class="ai-tab-panel" id="ai-photo-panel" style="margin-top:12px;">
+          <div class="ai-hint-box">Сфотографируй полку или вещи — ИИ распознает объекты и предложит карточки. Исходные фото прикрепятся к найденным вещам.</div>
+          <div class="photo-strip" id="ai-photo-strip">
+            <label class="photo-add" id="ai-photo-add">
+              <span class="pa-icon">＋</span>
+              <span>Фото</span>
+              <input type="file" accept="image/*" multiple hidden id="ai-photo-input">
+            </label>
+          </div>
+          <button class="btn btn-primary btn-block" id="btn-analyze-photo">✨ Разобрать фото</button>
+        </div>
 
-      <button class="btn btn-primary btn-block" id="btn-save">Сохранить вещь</button>
+        <!-- Текст/голос → вещи -->
+        <div class="ai-tab-panel" id="ai-text-panel" style="display:none;margin-top:12px;">
+          <div class="ai-hint-box">Продиктуй или впиши список вещей — по одной в строке или через запятую. ИИ разложит по категориям и тегам каталога.</div>
+          <textarea class="field-textarea" id="ai-text" placeholder="Дрель Bosch, синий чемодан, две зимние шины R16…"></textarea>
+          <button class="btn btn-primary btn-block" id="btn-analyze-text">✨ Разобрать текст</button>
+        </div>
+
+        <!-- Чек-лист результатов -->
+        <div id="ai-results" style="display:none;margin-top:16px;"></div>
+      </div>
     </main>
   </div>
 
@@ -104,17 +136,20 @@
     import {
       makeItem, templateCharacteristics, ITEM_STATUSES, statusLabel, labelOf,
     } from './js/catalog-core.js';
+    import { aiItemsFromText, aiItemsFromPhotos } from './js/ai.js';
+    import { compressForUpload } from './js/image.js';
 
     const $ = (id) => document.getElementById(id);
     const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
+    function busy(on, text){ if(text) $('saving-text').textContent=text; $('saving').classList.toggle('on', on); }
 
     let cid = null;
     let taxonomy = { categories: [], tags: [], templates: {} };
     let selectedTags = new Set();
     let status = 'have';
-    let chars = [];                 // [{label,value,type}]
-    let pendingPhotos = [];         // [{file, url(objectURL)}]
+    let chars = [];
+    let pendingPhotos = [];   // ручной режим: [{file,url}]
 
     (async function boot(){
       const user = await initAuth();
@@ -130,16 +165,28 @@
       renderChars();
       $('loading').style.display = 'none';
       $('app').style.display = 'block';
-      if (window.attachVoiceBtn) { attachVoiceBtn($('f-name')); attachVoiceBtn($('f-description')); }
+      if (window.attachVoiceBtn) { attachVoiceBtn($('f-name')); attachVoiceBtn($('f-description')); attachVoiceBtn($('ai-text')); }
+      if (location.hash === '#ai') setMode('ai');
     })().catch(err => { console.error(err); $('loading').style.display='none'; toast('Ошибка загрузки'); });
 
-    // ── Категория ──
+    // ── Переключатель режима ──
+    function setMode(m){
+      const ai = m === 'ai';
+      $('manual-mode').style.display = ai ? 'none' : 'block';
+      $('ai-mode').style.display = ai ? 'block' : 'none';
+      $('btn-save-top').style.display = ai ? 'none' : '';
+      $('mode-manual').classList.toggle('on', !ai);
+      $('mode-ai').classList.toggle('on', ai);
+    }
+    $('mode-manual').onclick = () => setMode('manual');
+    $('mode-ai').onclick = () => setMode('ai');
+
+    // ── Категория (ручной) ──
     function buildCategorySelect(){
       $('f-category').innerHTML = taxonomy.categories
         .map(c => `<option value="${esc(c.id)}">${esc(c.label)}</option>`).join('');
     }
     $('f-category').onchange = () => {
-      // Подставляем шаблон категории, но сохраняем уже заполненные пользователем поля.
       const filled = chars.filter(c => c.value && c.value.trim());
       const tpl = templateCharacteristics($('f-category').value);
       const existingLabels = new Set(filled.map(c => c.label.toLowerCase()));
@@ -147,7 +194,7 @@
       renderChars();
     };
 
-    // ── Теги ──
+    // ── Теги (ручной) ──
     function buildTagChips(){
       const wrap = $('tag-chips');
       if (!taxonomy.tags.length) { wrap.innerHTML = '<span class="hint">Тегов пока нет — добавь их в настройках.</span>'; return; }
@@ -160,7 +207,7 @@
       });
     }
 
-    // ── Статус ──
+    // ── Статус (ручной) ──
     function buildStatusChips(){
       $('status-chips').innerHTML = ITEM_STATUSES
         .map(s => `<button type="button" class="chip ${s===status?'on':''}" data-status="${s}">${esc(statusLabel(s))}</button>`).join('');
@@ -170,16 +217,14 @@
       });
     }
 
-    // ── Характеристики ──
-    const TYPES = [['text','Текст'],['number','Число'],['money','Деньги'],['date','Дата'],['select','Выбор']];
+    // ── Характеристики (ручной) ──
     function renderChars(){
       const ed = $('char-editor');
       ed.innerHTML = chars.map((c,i) => `
         <div class="char-row" data-i="${i}">
           <input class="field-input char-label" placeholder="Поле" value="${esc(c.label)}">
           <input class="field-input char-value" placeholder="Значение" value="${esc(c.value)}"
-                 type="${c.type==='date'?'date':(c.type==='number'||c.type==='money')?'text':'text'}"
-                 inputmode="${(c.type==='number'||c.type==='money')?'decimal':'text'}">
+                 type="${c.type==='date'?'date':'text'}" inputmode="${(c.type==='number'||c.type==='money')?'decimal':'text'}">
           <button class="char-remove" type="button" title="Удалить">✕</button>
         </div>`).join('');
       ed.querySelectorAll('.char-row').forEach(row => {
@@ -191,17 +236,14 @@
     }
     $('btn-add-char').onclick = () => { chars.push({ label:'', value:'', type:'text' }); renderChars(); };
 
-    // ── Фото (загрузка отложена до сохранения) ──
+    // ── Фото ручного режима ──
     $('photo-input').onchange = (e) => {
-      for (const file of e.target.files) {
-        pendingPhotos.push({ file, url: URL.createObjectURL(file) });
-      }
+      for (const file of e.target.files) pendingPhotos.push({ file, url: URL.createObjectURL(file) });
       e.target.value = '';
       renderPhotoStrip();
     };
     function renderPhotoStrip(){
-      const strip = $('photo-strip');
-      const addBtn = $('photo-add');
+      const strip = $('photo-strip'), addBtn = $('photo-add');
       strip.querySelectorAll('.photo-tile').forEach(t => t.remove());
       pendingPhotos.forEach((p, i) => {
         const tile = document.createElement('div');
@@ -211,60 +253,204 @@
           <img src="${p.url}" alt="">
           <button class="p-del" type="button" title="Убрать">✕</button>
           ${i!==0 ? '<button class="p-cover" type="button">Сделать обложкой</button>' : ''}`;
-        tile.querySelector('.p-del').onclick = () => {
-          URL.revokeObjectURL(p.url); pendingPhotos.splice(i,1); renderPhotoStrip();
-        };
+        tile.querySelector('.p-del').onclick = () => { URL.revokeObjectURL(p.url); pendingPhotos.splice(i,1); renderPhotoStrip(); };
         const cover = tile.querySelector('.p-cover');
-        if (cover) cover.onclick = () => {
-          const [pick] = pendingPhotos.splice(i,1); pendingPhotos.unshift(pick); renderPhotoStrip();
-        };
+        if (cover) cover.onclick = () => { const [pick]=pendingPhotos.splice(i,1); pendingPhotos.unshift(pick); renderPhotoStrip(); };
         strip.insertBefore(tile, addBtn);
       });
     }
 
-    // ── Сохранение ──
+    // ── Сохранение ручной вещи ──
     async function save(){
       const name = $('f-name').value.trim();
       if (!name) { toast('Введи название'); $('f-name').focus(); return; }
       $('btn-save').disabled = true; $('btn-save-top').disabled = true;
-      $('saving').classList.add('on');
+      busy(true, 'Сохраняю…');
       try {
         const cleanChars = chars
           .map(c => ({ label:(c.label||'').trim(), value:(c.value||'').trim(), type:c.type||'text' }))
           .filter(c => c.label || c.value);
         const qty = Math.max(1, parseInt($('f-quantity').value,10) || 1);
         const item = makeItem({
-          name,
-          description: $('f-description').value.trim(),
-          category: $('f-category').value,
-          tags: Array.from(selectedTags),
-          characteristics: cleanChars,
-          location: $('f-location').value.trim(),
-          quantity: qty,
-          status,
-          source: 'manual',
-          createdBy: currentUid(),
+          name, description: $('f-description').value.trim(), category: $('f-category').value,
+          tags: Array.from(selectedTags), characteristics: cleanChars,
+          location: $('f-location').value.trim(), quantity: qty, status,
+          source: 'manual', createdBy: currentUid(),
         });
-        // Загрузка фото в Storage под id новой вещи.
         const photos = [];
         for (let i = 0; i < pendingPhotos.length; i++) {
-          $('saving-text').textContent = `Загружаю фото ${i+1}/${pendingPhotos.length}…`;
+          busy(true, `Загружаю фото ${i+1}/${pendingPhotos.length}…`);
           photos.push(await uploadItemPhoto(cid, item.id, pendingPhotos[i].file, i, i===0));
         }
         item.photos = photos;
-        $('saving-text').textContent = 'Сохраняю…';
+        busy(true, 'Сохраняю…');
         await saveItem(cid, item);
         pendingPhotos.forEach(p => URL.revokeObjectURL(p.url));
         location.href = `item.html?id=${encodeURIComponent(item.id)}`;
       } catch (err) {
-        console.error(err);
-        $('saving').classList.remove('on');
+        console.error(err); busy(false);
         $('btn-save').disabled = false; $('btn-save-top').disabled = false;
         toast('Не удалось сохранить: ' + (err.code || err.message || 'ошибка'));
       }
     }
     $('btn-save').onclick = save;
     $('btn-save-top').onclick = save;
+
+    // ══════════════════ AI-режим ══════════════════
+    let aiPhotos = [];   // [{file,url}] для vision + прикрепления к найденным вещам
+    let drafts = [];     // черновики вещей от ИИ
+    let draftSel = [];   // булевы флаги выбора
+
+    // Вкладки фото/текст
+    $('ai-tab-photo').onclick = () => switchAiTab('photo');
+    $('ai-tab-text').onclick = () => switchAiTab('text');
+    function switchAiTab(t){
+      const photo = t === 'photo';
+      $('ai-photo-panel').style.display = photo ? 'flex' : 'none';
+      $('ai-text-panel').style.display = photo ? 'none' : 'flex';
+      $('ai-tab-photo').classList.toggle('on', photo);
+      $('ai-tab-text').classList.toggle('on', !photo);
+    }
+
+    // Фото для AI
+    $('ai-photo-input').onchange = (e) => {
+      for (const file of e.target.files) aiPhotos.push({ file, url: URL.createObjectURL(file) });
+      e.target.value = '';
+      renderAiPhotoStrip();
+    };
+    function renderAiPhotoStrip(){
+      const strip = $('ai-photo-strip'), addBtn = $('ai-photo-add');
+      strip.querySelectorAll('.photo-tile').forEach(t => t.remove());
+      aiPhotos.forEach((p, i) => {
+        const tile = document.createElement('div');
+        tile.className = 'photo-tile';
+        tile.innerHTML = `<img src="${p.url}" alt=""><button class="p-del" type="button">✕</button>`;
+        tile.querySelector('.p-del').onclick = () => { URL.revokeObjectURL(p.url); aiPhotos.splice(i,1); renderAiPhotoStrip(); };
+        strip.insertBefore(tile, addBtn);
+      });
+    }
+
+    function blobToBase64(blob){
+      return new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(String(r.result).split(',')[1]);
+        r.onerror = rej; r.readAsDataURL(blob);
+      });
+    }
+
+    // Разбор фото
+    $('btn-analyze-photo').onclick = async () => {
+      if (!aiPhotos.length) { toast('Добавь хотя бы одно фото'); return; }
+      $('btn-analyze-photo').disabled = true;
+      busy(true, 'Сжимаю фото…');
+      try {
+        const base64 = [];
+        for (const p of aiPhotos) { const { main } = await compressForUpload(p.file); base64.push(await blobToBase64(main.blob)); }
+        busy(true, 'ИИ анализирует фото…');
+        drafts = await aiItemsFromPhotos(base64, taxonomy.categories, taxonomy.tags);
+        busy(false);
+        if (!drafts.length) { toast('ИИ не нашёл вещей — попробуй другое фото'); return; }
+        draftSel = drafts.map(() => true);
+        renderAiResults('ai-photo');
+      } catch (err) { console.error(err); busy(false); toast('Ошибка ИИ: ' + (err.message || 'сбой')); }
+      finally { $('btn-analyze-photo').disabled = false; }
+    };
+
+    // Разбор текста
+    $('btn-analyze-text').onclick = async () => {
+      const text = $('ai-text').value.trim();
+      if (!text) { toast('Впиши или продиктуй список'); return; }
+      $('btn-analyze-text').disabled = true;
+      busy(true, 'ИИ разбирает текст…');
+      try {
+        drafts = await aiItemsFromText(text, taxonomy.categories, taxonomy.tags);
+        busy(false);
+        if (!drafts.length) { toast('ИИ не распознал вещей'); return; }
+        draftSel = drafts.map(() => true);
+        renderAiResults('ai-text');
+      } catch (err) { console.error(err); busy(false); toast('Ошибка ИИ: ' + (err.message || 'сбой')); }
+      finally { $('btn-analyze-text').disabled = false; }
+    };
+
+    // Чек-лист результатов (редактируемый: название + категория)
+    let aiSource = 'ai-text';
+    function renderAiResults(source){
+      aiSource = source;
+      const wrap = $('ai-results');
+      wrap.style.display = 'block';
+      wrap.innerHTML =
+        `<div class="section-label">ИИ нашёл ${drafts.length} — выбери, что сохранить</div>` +
+        drafts.map((d,i) => draftRow(d,i)).join('') +
+        `<div class="chip-row" style="margin:4px 0 12px;"><button class="chip" id="ai-select-all" type="button">Выбрать все / никого</button></div>
+         <button class="btn btn-primary btn-block" id="btn-save-ai">💾 Сохранить выбранное</button>`;
+      bindDraftRows();
+      $('ai-select-all').onclick = toggleAll;
+      $('btn-save-ai').onclick = saveSelected;
+      wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    function draftRow(d, i){
+      const catOpts = taxonomy.categories
+        .map(c => `<option value="${esc(c.id)}" ${c.id===d.category?'selected':''}>${esc(c.label)}</option>`).join('');
+      const tagChips = (d.tags||[]).map(t => `<span class="item-tag">${esc(labelOf(taxonomy.tags, t))}</span>`).join('');
+      const nChars = (d.characteristics||[]).length;
+      return `<div class="ai-draft${draftSel[i]?'':' off'}" data-i="${i}">
+        <div class="ai-check" data-check="${i}">✓</div>
+        <div class="ai-draft-main">
+          <input class="field-input d-name" data-name="${i}" value="${esc(d.name)}">
+          <select class="select-input d-cat" data-cat="${i}">${catOpts}</select>
+          ${tagChips ? `<div class="item-tags">${tagChips}</div>` : ''}
+          ${nChars ? `<div class="ai-chars-note">${nChars} характеристик${nChars===1?'а':(nChars<5?'и':'')} от ИИ</div>` : ''}
+        </div>
+      </div>`;
+    }
+    function bindDraftRows(){
+      const wrap = $('ai-results');
+      wrap.querySelectorAll('[data-check]').forEach(el => el.onclick = () => {
+        const i = +el.dataset.check; draftSel[i] = !draftSel[i];
+        el.closest('.ai-draft').classList.toggle('off', !draftSel[i]);
+      });
+      wrap.querySelectorAll('.d-name').forEach(el => el.oninput = () => { drafts[+el.dataset.name].name = el.value; });
+      wrap.querySelectorAll('.d-cat').forEach(el => el.onchange = () => { drafts[+el.dataset.cat].category = el.value; });
+    }
+    let allOn = true;
+    function toggleAll(){ allOn = !allOn; draftSel = draftSel.map(() => allOn); renderAiResults(aiSource); }
+
+    // Сохранить выбранные черновики в активный каталог
+    async function saveSelected(){
+      const chosen = drafts.filter((_, i) => draftSel[i]).filter(d => (d.name||'').trim());
+      if (!chosen.length) { toast('Отметь хотя бы одну вещь'); return; }
+      $('btn-save-ai').disabled = true;
+      busy(true, 'Сохраняю…');
+      try {
+        // Для фото — грузим исходники один раз, дескрипторы переиспользуем на всех вещах
+        // (кроп по объектам — v2; сейчас исходные фото прикрепляются ко всем найденным).
+        let savedCount = 0;
+        for (const d of chosen) {
+          const item = makeItem({
+            name: d.name.trim(), description: d.description || '', category: d.category,
+            tags: d.tags || [], characteristics: d.characteristics || [],
+            source: aiSource, aiGenerated: true, createdBy: currentUid(),
+          });
+          if (aiSource === 'ai-photo' && aiPhotos.length) {
+            const photos = [];
+            for (let i = 0; i < aiPhotos.length; i++) {
+              busy(true, `Вещь ${savedCount+1}/${chosen.length}: фото ${i+1}/${aiPhotos.length}…`);
+              photos.push(await uploadItemPhoto(cid, item.id, aiPhotos[i].file, i, i===0));
+            }
+            item.photos = photos;
+          }
+          busy(true, `Сохраняю ${savedCount+1}/${chosen.length}…`);
+          await saveItem(cid, item);
+          savedCount++;
+        }
+        aiPhotos.forEach(p => URL.revokeObjectURL(p.url));
+        toast(`Сохранено: ${savedCount}`);
+        setTimeout(() => location.href = 'index.html', 900);
+      } catch (err) {
+        console.error(err); busy(false); $('btn-save-ai').disabled = false;
+        toast('Не удалось сохранить: ' + (err.code || err.message || 'ошибка'));
+      }
+    }
   </script>
   <script src="voice.js"></script>
   <script src="pwa.js"></script>
