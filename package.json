@@ -1,0 +1,10 @@
+{
+  "name": "twin-things",
+  "private": true,
+  "type": "module",
+  "description": "Twin Things — совместный каталог домашних вещей. Статика без сборки; package.json нужен только для тестов чистых модулей.",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "serve": "npx serve ."
+  }
+}
