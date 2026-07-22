@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Twin Things">
+  <link rel="manifest" href="manifest.json">
+  <title>Новая вещь — Twin Things</title>
+  <link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="loading">
+    <div class="loading-icon">🏠</div>
+    <div class="loading-text">Twin Things</div>
+  </div>
+
+  <div id="app" style="display:none;">
+    <header class="page-header">
+      <a class="back-btn" href="index.html" title="Назад">←</a>
+      <div class="page-title">Новая вещь</div>
+      <button class="header-action" id="btn-save-top">Сохранить</button>
+    </header>
+
+    <main class="page-body">
+      <!-- Фото -->
+      <div class="field-group">
+        <label class="field-label">Фото</label>
+        <div class="photo-strip" id="photo-strip">
+          <label class="photo-add" id="photo-add">
+            <span class="pa-icon">＋</span>
+            <span>Добавить</span>
+            <input type="file" accept="image/*" multiple hidden id="photo-input">
+          </label>
+        </div>
+        <div class="hint">Первое фото — обложка. Фото можно добавить и позже.</div>
+      </div>
+
+      <!-- Название -->
+      <div class="field-group">
+        <label class="field-label" for="f-name">Название *</label>
+        <input class="field-input" id="f-name" placeholder="Напр. Дрель Bosch GSB 13" autocomplete="off">
+      </div>
+
+      <!-- Категория -->
+      <div class="field-group">
+        <label class="field-label" for="f-category">Категория</label>
+        <select class="select-input" id="f-category"></select>
+        <div class="hint">При смене категории подставляются рекомендованные характеристики.</div>
+      </div>
+
+      <!-- Теги -->
+      <div class="field-group">
+        <label class="field-label">Теги</label>
+        <div class="chip-row" id="tag-chips"></div>
+      </div>
+
+      <!-- Характеристики -->
+      <div class="field-group">
+        <label class="field-label">Характеристики</label>
+        <div class="char-editor" id="char-editor"></div>
+        <button class="add-field-btn" id="btn-add-char" type="button">＋ добавить поле</button>
+      </div>
+
+      <!-- Локация / количество -->
+      <div class="row-2">
+        <div class="field-group">
+          <label class="field-label" for="f-location">Локация</label>
+          <input class="field-input" id="f-location" placeholder="Гараж / полка 2" autocomplete="off">
+        </div>
+        <div class="field-group">
+          <label class="field-label" for="f-quantity">Количество</label>
+          <input class="field-input" id="f-quantity" type="number" min="1" value="1">
+        </div>
+      </div>
+
+      <!-- Статус -->
+      <div class="field-group">
+        <label class="field-label">Статус</label>
+        <div class="chip-row" id="status-chips"></div>
+      </div>
+
+      <!-- Описание -->
+      <div class="field-group">
+        <label class="field-label" for="f-description">Описание</label>
+        <textarea class="field-textarea" id="f-description" placeholder="Свободное описание вещи…"></textarea>
+      </div>
+
+      <button class="btn btn-primary btn-block" id="btn-save">Сохранить вещь</button>
+    </main>
+  </div>
+
+  <div class="saving-overlay" id="saving">
+    <div class="saving-box"><span class="spinner"></span><span id="saving-text">Сохраняю…</span></div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script type="module">
+    import {
+      initAuth, listMyCatalogs, resolveActiveCatalog, loadTaxonomy,
+      saveItem, uploadItemPhoto, currentUid,
+    } from './js/store.js';
+    import {
+      makeItem, templateCharacteristics, ITEM_STATUSES, statusLabel, labelOf,
+    } from './js/catalog-core.js';
+
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
+
+    let cid = null;
+    let taxonomy = { categories: [], tags: [], templates: {} };
+    let selectedTags = new Set();
+    let status = 'have';
+    let chars = [];                 // [{label,value,type}]
+    let pendingPhotos = [];         // [{file, url(objectURL)}]
+
+    (async function boot(){
+      const user = await initAuth();
+      if (!user) { location.href = 'index.html'; return; }
+      const cats = await listMyCatalogs();
+      cid = resolveActiveCatalog(cats);
+      if (!cid) { location.href = 'index.html'; return; }
+      taxonomy = await loadTaxonomy(cid);
+      buildCategorySelect();
+      buildTagChips();
+      buildStatusChips();
+      chars = templateCharacteristics($('f-category').value);
+      renderChars();
+      $('loading').style.display = 'none';
+      $('app').style.display = 'block';
+      if (window.attachVoiceBtn) { attachVoiceBtn($('f-name')); attachVoiceBtn($('f-description')); }
+    })().catch(err => { console.error(err); $('loading').style.display='none'; toast('Ошибка загрузки'); });
+
+    // ── Категория ──
+    function buildCategorySelect(){
+      $('f-category').innerHTML = taxonomy.categories
+        .map(c => `<option value="${esc(c.id)}">${esc(c.label)}</option>`).join('');
+    }
+    $('f-category').onchange = () => {
+      // Подставляем шаблон категории, но сохраняем уже заполненные пользователем поля.
+      const filled = chars.filter(c => c.value && c.value.trim());
+      const tpl = templateCharacteristics($('f-category').value);
+      const existingLabels = new Set(filled.map(c => c.label.toLowerCase()));
+      chars = [...filled, ...tpl.filter(t => !existingLabels.has(t.label.toLowerCase()))];
+      renderChars();
+    };
+
+    // ── Теги ──
+    function buildTagChips(){
+      const wrap = $('tag-chips');
+      if (!taxonomy.tags.length) { wrap.innerHTML = '<span class="hint">Тегов пока нет — добавь их в настройках.</span>'; return; }
+      wrap.innerHTML = taxonomy.tags
+        .map(t => `<button type="button" class="chip" data-tag="${esc(t.id)}">${esc(t.label)}</button>`).join('');
+      wrap.querySelectorAll('.chip').forEach(ch => ch.onclick = () => {
+        const id = ch.dataset.tag;
+        if (selectedTags.has(id)) { selectedTags.delete(id); ch.classList.remove('on'); }
+        else { selectedTags.add(id); ch.classList.add('on'); }
+      });
+    }
+
+    // ── Статус ──
+    function buildStatusChips(){
+      $('status-chips').innerHTML = ITEM_STATUSES
+        .map(s => `<button type="button" class="chip ${s===status?'on':''}" data-status="${s}">${esc(statusLabel(s))}</button>`).join('');
+      $('status-chips').querySelectorAll('.chip').forEach(ch => ch.onclick = () => {
+        status = ch.dataset.status;
+        $('status-chips').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.status===status));
+      });
+    }
+
+    // ── Характеристики ──
+    const TYPES = [['text','Текст'],['number','Число'],['money','Деньги'],['date','Дата'],['select','Выбор']];
+    function renderChars(){
+      const ed = $('char-editor');
+      ed.innerHTML = chars.map((c,i) => `
+        <div class="char-row" data-i="${i}">
+          <input class="field-input char-label" placeholder="Поле" value="${esc(c.label)}">
+          <input class="field-input char-value" placeholder="Значение" value="${esc(c.value)}"
+                 type="${c.type==='date'?'date':(c.type==='number'||c.type==='money')?'text':'text'}"
+                 inputmode="${(c.type==='number'||c.type==='money')?'decimal':'text'}">
+          <button class="char-remove" type="button" title="Удалить">✕</button>
+        </div>`).join('');
+      ed.querySelectorAll('.char-row').forEach(row => {
+        const i = +row.dataset.i;
+        row.querySelector('.char-label').oninput = e => chars[i].label = e.target.value;
+        row.querySelector('.char-value').oninput = e => chars[i].value = e.target.value;
+        row.querySelector('.char-remove').onclick = () => { chars.splice(i,1); renderChars(); };
+      });
+    }
+    $('btn-add-char').onclick = () => { chars.push({ label:'', value:'', type:'text' }); renderChars(); };
+
+    // ── Фото (загрузка отложена до сохранения) ──
+    $('photo-input').onchange = (e) => {
+      for (const file of e.target.files) {
+        pendingPhotos.push({ file, url: URL.createObjectURL(file) });
+      }
+      e.target.value = '';
+      renderPhotoStrip();
+    };
+    function renderPhotoStrip(){
+      const strip = $('photo-strip');
+      const addBtn = $('photo-add');
+      strip.querySelectorAll('.photo-tile').forEach(t => t.remove());
+      pendingPhotos.forEach((p, i) => {
+        const tile = document.createElement('div');
+        tile.className = 'photo-tile';
+        tile.innerHTML = `
+          ${i===0 ? '<span class="p-badge">обложка</span>' : ''}
+          <img src="${p.url}" alt="">
+          <button class="p-del" type="button" title="Убрать">✕</button>
+          ${i!==0 ? '<button class="p-cover" type="button">Сделать обложкой</button>' : ''}`;
+        tile.querySelector('.p-del').onclick = () => {
+          URL.revokeObjectURL(p.url); pendingPhotos.splice(i,1); renderPhotoStrip();
+        };
+        const cover = tile.querySelector('.p-cover');
+        if (cover) cover.onclick = () => {
+          const [pick] = pendingPhotos.splice(i,1); pendingPhotos.unshift(pick); renderPhotoStrip();
+        };
+        strip.insertBefore(tile, addBtn);
+      });
+    }
+
+    // ── Сохранение ──
+    async function save(){
+      const name = $('f-name').value.trim();
+      if (!name) { toast('Введи название'); $('f-name').focus(); return; }
+      $('btn-save').disabled = true; $('btn-save-top').disabled = true;
+      $('saving').classList.add('on');
+      try {
+        const cleanChars = chars
+          .map(c => ({ label:(c.label||'').trim(), value:(c.value||'').trim(), type:c.type||'text' }))
+          .filter(c => c.label || c.value);
+        const qty = Math.max(1, parseInt($('f-quantity').value,10) || 1);
+        const item = makeItem({
+          name,
+          description: $('f-description').value.trim(),
+          category: $('f-category').value,
+          tags: Array.from(selectedTags),
+          characteristics: cleanChars,
+          location: $('f-location').value.trim(),
+          quantity: qty,
+          status,
+          source: 'manual',
+          createdBy: currentUid(),
+        });
+        // Загрузка фото в Storage под id новой вещи.
+        const photos = [];
+        for (let i = 0; i < pendingPhotos.length; i++) {
+          $('saving-text').textContent = `Загружаю фото ${i+1}/${pendingPhotos.length}…`;
+          photos.push(await uploadItemPhoto(cid, item.id, pendingPhotos[i].file, i, i===0));
+        }
+        item.photos = photos;
+        $('saving-text').textContent = 'Сохраняю…';
+        await saveItem(cid, item);
+        pendingPhotos.forEach(p => URL.revokeObjectURL(p.url));
+        location.href = `item.html?id=${encodeURIComponent(item.id)}`;
+      } catch (err) {
+        console.error(err);
+        $('saving').classList.remove('on');
+        $('btn-save').disabled = false; $('btn-save-top').disabled = false;
+        toast('Не удалось сохранить: ' + (err.code || err.message || 'ошибка'));
+      }
+    }
+    $('btn-save').onclick = save;
+    $('btn-save-top').onclick = save;
+  </script>
+  <script src="voice.js"></script>
+  <script src="pwa.js"></script>
+</body>
+</html>

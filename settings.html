@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Twin Things">
+  <link rel="manifest" href="manifest.json">
+  <title>Настройки — Twin Things</title>
+  <link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="loading">
+    <div class="loading-icon">🏠</div>
+    <div class="loading-text">Twin Things</div>
+  </div>
+
+  <div id="app" style="display:none;">
+    <header class="page-header">
+      <a class="back-btn" href="index.html" title="Назад">←</a>
+      <div class="page-title">Настройки</div>
+    </header>
+
+    <main class="page-body">
+      <!-- Каталог -->
+      <div class="card-block">
+        <h2>Каталог</h2>
+        <div class="field-group">
+          <label class="field-label" for="c-name">Название</label>
+          <div class="tax-add">
+            <input class="field-input" id="c-name" autocomplete="off">
+            <button class="btn btn-ghost" id="btn-rename">Сохранить</button>
+          </div>
+        </div>
+        <div class="field-group">
+          <label class="field-label">Код приглашения</label>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="code-badge" id="join-code">——————</span>
+            <button class="btn btn-ghost" id="btn-copy-code" style="padding:8px 12px;">Копировать</button>
+          </div>
+          <div class="hint">Поделись кодом, чтобы пригласить участника в каталог. Полное управление участниками появится в следующей волне.</div>
+        </div>
+      </div>
+
+      <!-- Категории -->
+      <div class="card-block">
+        <h2>Категории</h2>
+        <div class="hint">Одна основная классификация вещи. Удаление не меняет уже созданные вещи.</div>
+        <div class="tax-list" id="cat-list"></div>
+        <div class="tax-add">
+          <input class="field-input" id="cat-new" placeholder="Новая категория" autocomplete="off">
+          <button class="btn btn-ghost" id="btn-add-cat">＋</button>
+        </div>
+      </div>
+
+      <!-- Теги -->
+      <div class="card-block">
+        <h2>Теги</h2>
+        <div class="hint">Сквозные метки (хрупкое, на продажу, детское…). У вещи их может быть много.</div>
+        <div class="tax-list" id="tag-list"></div>
+        <div class="tax-add">
+          <input class="field-input" id="tag-new" placeholder="Новый тег" autocomplete="off">
+          <button class="btn btn-ghost" id="btn-add-tag">＋</button>
+        </div>
+      </div>
+
+      <!-- Профиль -->
+      <div class="card-block">
+        <h2>Профиль</h2>
+        <div class="hint" id="profile-line">—</div>
+        <button class="btn btn-danger btn-block" id="btn-signout">Выйти из аккаунта</button>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script type="module">
+    import {
+      initAuth, listMyCatalogs, resolveActiveCatalog, getCatalog, renameCatalog,
+      loadTaxonomy, saveMeta, signOutUser, currentUserName, currentUserEmail,
+    } from './js/store.js';
+    import { addTaxonomyEntry } from './js/catalog-core.js';
+
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
+
+    let cid = null, categories = [], tags = [];
+
+    (async function boot(){
+      const user = await initAuth();
+      if (!user) { location.href='index.html'; return; }
+      const cats = await listMyCatalogs();
+      cid = resolveActiveCatalog(cats);
+      if (!cid) { location.href='index.html'; return; }
+      const [cat, tax] = await Promise.all([getCatalog(cid), loadTaxonomy(cid)]);
+      categories = tax.categories.slice();
+      tags = tax.tags.slice();
+      $('c-name').value = cat?.name || '';
+      $('join-code').textContent = cat?.joinCode || '——————';
+      $('profile-line').textContent = (currentUserName() || '') + (currentUserEmail() ? ` · ${currentUserEmail()}` : '');
+      renderTax();
+      $('loading').style.display='none';
+      $('app').style.display='block';
+    })().catch(err => { console.error(err); $('loading').style.display='none'; toast('Ошибка загрузки'); });
+
+    // ── Переименование каталога ──
+    $('btn-rename').onclick = async () => {
+      const name = $('c-name').value.trim();
+      if (!name) { toast('Введи название'); return; }
+      try { await renameCatalog(cid, name); toast('Название сохранено'); }
+      catch (err) { console.error(err); toast('Не удалось сохранить'); }
+    };
+
+    // ── Копирование кода ──
+    $('btn-copy-code').onclick = async () => {
+      const code = $('join-code').textContent;
+      try { await navigator.clipboard.writeText(code); toast('Код скопирован'); }
+      catch { toast(code); }
+    };
+
+    // ── Таксономия ──
+    function renderTax(){
+      $('cat-list').innerHTML = categories.map(c => taxRow(c, 'cat')).join('') ||
+        '<div class="hint">Пусто.</div>';
+      $('tag-list').innerHTML = tags.map(t => taxRow(t, 'tag')).join('') ||
+        '<div class="hint">Пусто.</div>';
+      $('cat-list').querySelectorAll('.tax-del').forEach(b => b.onclick = () => removeCat(b.dataset.id));
+      $('tag-list').querySelectorAll('.tax-del').forEach(b => b.onclick = () => removeTag(b.dataset.id));
+    }
+    function taxRow(entry, kind){
+      return `<div class="tax-row">
+        <span><span class="tax-name">${esc(entry.label)}</span> <span class="tax-id">#${esc(entry.id)}</span></span>
+        <button class="tax-del" data-id="${esc(entry.id)}" title="Удалить">✕</button>
+      </div>`;
+    }
+
+    $('btn-add-cat').onclick = async () => {
+      const { list, entry } = addTaxonomyEntry(categories, $('cat-new').value);
+      if (!entry) { toast('Введи название'); return; }
+      categories = list; $('cat-new').value='';
+      renderTax();
+      await persist('categories', categories);
+    };
+    $('btn-add-tag').onclick = async () => {
+      const { list, entry } = addTaxonomyEntry(tags, $('tag-new').value);
+      if (!entry) { toast('Введи название'); return; }
+      tags = list; $('tag-new').value='';
+      renderTax();
+      await persist('tags', tags);
+    };
+    async function removeCat(id){
+      categories = categories.filter(c => c.id !== id); renderTax();
+      await persist('categories', categories);
+    }
+    async function removeTag(id){
+      tags = tags.filter(t => t.id !== id); renderTax();
+      await persist('tags', tags);
+    }
+    async function persist(name, list){
+      try { await saveMeta(cid, name, { list }); }
+      catch (err) { console.error(err); toast('Не удалось сохранить'); }
+    }
+
+    // Enter в полях добавления
+    $('cat-new').addEventListener('keydown', e => { if (e.key==='Enter') $('btn-add-cat').click(); });
+    $('tag-new').addEventListener('keydown', e => { if (e.key==='Enter') $('btn-add-tag').click(); });
+
+    // ── Выход ──
+    $('btn-signout').onclick = async () => {
+      if (confirm('Выйти из аккаунта?')) { await signOutUser(); location.href='index.html'; }
+    };
+  </script>
+  <script src="pwa.js"></script>
+</body>
+</html>
