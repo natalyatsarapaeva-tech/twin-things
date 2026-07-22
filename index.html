@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Twin Things">
+  <link rel="manifest" href="manifest.json">
+  <title>Twin Things</title>
+  <link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Загрузка -->
+  <div id="loading">
+    <div class="loading-icon">🏠</div>
+    <div class="loading-text">Twin Things</div>
+  </div>
+
+  <!-- Экран входа -->
+  <div id="auth" class="auth-wrap" style="display:none;">
+    <div class="auth-title">Twin <em>Things</em></div>
+    <div class="auth-sub">Совместный каталог домашних вещей. Войди, чтобы открыть свои каталоги.</div>
+    <div class="auth-card">
+      <button class="btn btn-google" id="btn-google">🔵 Войти через Google</button>
+      <div class="divider">или по email</div>
+      <input class="field-input" id="in-email" type="email" placeholder="Email" autocomplete="email">
+      <input class="field-input" id="in-pass" type="password" placeholder="Пароль" autocomplete="current-password">
+      <div class="auth-error" id="auth-error"></div>
+      <button class="btn btn-primary" id="btn-email">Войти</button>
+      <button class="auth-switch" id="btn-toggle-mode">Нет аккаунта? Зарегистрироваться</button>
+    </div>
+  </div>
+
+  <!-- Приложение -->
+  <div id="app" style="display:none;">
+    <header class="app-header">
+      <div class="header-top">
+        <button class="catalog-switch" id="catalog-switch">
+          <span class="cs-name" id="cs-name">Мой дом</span>
+          <span class="cs-caret">▾</span>
+        </button>
+        <button class="header-avatar" id="avatar" title="Профиль / выход">?</button>
+      </div>
+      <div class="header-stats">
+        <span class="stat-chip" id="stat-count">0 вещей</span>
+        <span class="stat-chip" id="stat-role">—</span>
+      </div>
+    </header>
+
+    <main class="items-grid" id="items-grid">
+      <!-- Wave 1 наполнит грид карточками; пока — пустое состояние -->
+    </main>
+
+    <div class="fab-group">
+      <a class="fab fab-set" href="settings.html" title="Настройки">⚙</a>
+      <a class="fab fab-ai" href="add-item.html#ai" title="AI-добавление">✨</a>
+      <a class="fab" href="add-item.html" title="Добавить вещь">＋</a>
+    </div>
+  </div>
+
+  <!-- Свитчер каталогов -->
+  <div class="overlay" id="switch-overlay"></div>
+  <div class="sheet" id="switch-sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-body">
+      <div class="sheet-title">Мои каталоги</div>
+      <div id="catalog-list"></div>
+      <div class="divider">создать или присоединиться</div>
+      <input class="field-input" id="new-catalog-name" placeholder="Название нового каталога">
+      <button class="btn btn-ghost" id="btn-create-catalog">＋ Создать каталог</button>
+      <input class="field-input" id="join-code" placeholder="Код приглашения (напр. K7QMР2)">
+      <button class="btn btn-ghost" id="btn-join">Присоединиться по коду</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script type="module">
+    import {
+      initAuth, currentUid, currentUserName, currentUserEmail,
+      signInGoogle, signInEmail, registerEmail, signOutUser,
+      listMyCatalogs, ensureFirstCatalog, getActiveCatalogId, setActiveCatalogId,
+      resolveActiveCatalog, createCatalog, joinCatalogByCode, listItems,
+    } from './js/store.js';
+
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    let mode = 'signin'; // signin | register
+
+    function toast(msg) {
+      const t = $('toast'); t.textContent = msg; t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2200);
+    }
+    function show(el) { el.style.display = el === $('app') ? 'block' : (el === $('auth') ? 'flex' : 'block'); }
+    function hide(el) { el.style.display = 'none'; }
+
+    // ── Поток запуска ──
+    (async function boot() {
+      const user = await initAuth();
+      hide($('loading'));
+      if (user) await enterApp();
+      else show($('auth'));
+    })().catch(err => { hide($('loading')); show($('auth')); console.error(err); });
+
+    // ── Вход ──
+    $('btn-google').onclick = async () => {
+      try { await signInGoogle(); await enterApp(); }
+      catch (e) { $('auth-error').textContent = 'Не удалось войти через Google.'; console.error(e); }
+    };
+    $('btn-toggle-mode').onclick = () => {
+      mode = mode === 'signin' ? 'register' : 'signin';
+      $('btn-email').textContent = mode === 'signin' ? 'Войти' : 'Зарегистрироваться';
+      $('btn-toggle-mode').textContent = mode === 'signin'
+        ? 'Нет аккаунта? Зарегистрироваться' : 'Уже есть аккаунт? Войти';
+      $('auth-error').textContent = '';
+    };
+    $('btn-email').onclick = async () => {
+      const email = $('in-email').value.trim(), pass = $('in-pass').value;
+      if (!email || !pass) { $('auth-error').textContent = 'Введи email и пароль.'; return; }
+      try {
+        if (mode === 'signin') await signInEmail(email, pass);
+        else await registerEmail(email, pass);
+        await enterApp();
+      } catch (e) {
+        $('auth-error').textContent = 'Ошибка входа: ' + (e.code || e.message);
+        console.error(e);
+      }
+    };
+
+    // ── Вход в приложение ──
+    async function enterApp() {
+      hide($('auth'));
+      // При первом входе авто-создаётся личный каталог «Мой дом».
+      await ensureFirstCatalog();
+      const avatar = $('avatar');
+      const name = currentUserName() || currentUserEmail() || '?';
+      avatar.textContent = name.trim().charAt(0).toUpperCase() || '?';
+      show($('app'));
+      await refresh();
+    }
+
+    async function refresh() {
+      const cats = await listMyCatalogs();
+      const activeId = resolveActiveCatalog(cats);
+      const active = cats.find(c => c.id === activeId);
+      $('cs-name').textContent = active?.name || 'Каталог';
+      $('stat-role').textContent = active?.role === 'owner' ? '👑 владелец' : '✎ редактор';
+      renderCatalogList(cats, activeId);
+      // Грид вещей (Wave 1 добавит карточки/фильтры; здесь — базовый рендер).
+      const items = activeId ? await listItems(activeId) : [];
+      renderItems(items);
+      $('stat-count').textContent = `${items.length} ${plural(items.length)}`;
+    }
+
+    function plural(n) {
+      const a = Math.abs(n) % 100, b = a % 10;
+      if (a > 10 && a < 20) return 'вещей';
+      if (b > 1 && b < 5) return 'вещи';
+      if (b === 1) return 'вещь';
+      return 'вещей';
+    }
+
+    function renderItems(items) {
+      const grid = $('items-grid');
+      if (!items.length) {
+        grid.innerHTML = `<div class="empty-state fade-in">
+          <div class="es-icon">📦</div>
+          <div>Пока пусто. Добавь первую вещь — вручную или по фото через ✨ AI.</div>
+        </div>`;
+        return;
+      }
+      grid.innerHTML = items.map(it => {
+        const cover = (it.photos || []).find(p => p.isPrimary) || (it.photos || [])[0];
+        const thumb = cover
+          ? `<img class="item-thumb" src="${esc(cover.thumbUrl || cover.url)}" alt="" loading="lazy">`
+          : `<div class="item-thumb placeholder">📦</div>`;
+        const tags = (it.tags || []).slice(0, 3).map(t => `<span class="item-tag">${esc(t)}</span>`).join('');
+        return `<button class="item-card fade-in" onclick="location.href='item.html?id=${esc(it.id)}'">
+          ${thumb}
+          <div class="item-body">
+            <div class="item-name">${esc(it.name || 'Без названия')}</div>
+            ${it.category ? `<span class="item-cat">${esc(it.category)}</span>` : ''}
+            <div class="item-tags">${tags}</div>
+          </div>
+        </button>`;
+      }).join('');
+    }
+
+    function renderCatalogList(cats, activeId) {
+      $('catalog-list').innerHTML = cats.map(c => `
+        <div class="catalog-row ${c.id === activeId ? 'active' : ''}" data-cid="${esc(c.id)}">
+          <span>${esc(c.name || 'Каталог')}</span>
+          <span class="role-badge">${c.role === 'owner' ? 'владелец' : 'редактор'}</span>
+        </div>`).join('');
+      $('catalog-list').querySelectorAll('.catalog-row').forEach(row => {
+        row.onclick = async () => {
+          setActiveCatalogId(row.dataset.cid);
+          closeSwitch(); await refresh();
+        };
+      });
+    }
+
+    // ── Свитчер ──
+    function openSwitch() { $('switch-overlay').classList.add('open'); $('switch-sheet').classList.add('open'); }
+    function closeSwitch() { $('switch-overlay').classList.remove('open'); $('switch-sheet').classList.remove('open'); }
+    $('catalog-switch').onclick = openSwitch;
+    $('switch-overlay').onclick = closeSwitch;
+
+    $('btn-create-catalog').onclick = async () => {
+      const name = $('new-catalog-name').value.trim();
+      if (!name) { toast('Введи название'); return; }
+      await createCatalog(name);
+      $('new-catalog-name').value = '';
+      closeSwitch(); await refresh(); toast('Каталог создан');
+    };
+    $('btn-join').onclick = async () => {
+      const code = $('join-code').value.trim();
+      if (!code) { toast('Введи код'); return; }
+      const cid = await joinCatalogByCode(code);
+      if (!cid) { toast('Код не найден'); return; }
+      $('join-code').value = '';
+      closeSwitch(); await refresh(); toast('Ты присоединился к каталогу');
+    };
+
+    // ── Профиль/выход ──
+    $('avatar').onclick = async () => {
+      if (confirm('Выйти из аккаунта?')) { await signOutUser(); location.reload(); }
+    };
+  </script>
+  <script src="pwa.js"></script>
+</body>
+</html>
