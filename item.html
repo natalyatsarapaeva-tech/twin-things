@@ -29,7 +29,7 @@
       <div id="gallery"></div>
 
       <div class="detail-meta">
-        <span class="status-pill" id="v-status">В наличии</span>
+        <span class="status-pill active" id="v-status">Актуально</span>
         <span class="item-cat" id="v-category" style="display:none;"></span>
       </div>
       <div class="detail-name" id="v-name">—</div>
@@ -131,7 +131,7 @@
     const params = new URLSearchParams(location.search);
     const itemId = params.get('id');
     let cid = null, item = null, taxonomy = { categories:[], tags:[], templates:{} };
-    let selectedTags = new Set(), status = 'have', chars = [];
+    let selectedTags = new Set(), status = 'active', chars = [];
 
     (async function boot(){
       const user = await initAuth();
@@ -154,8 +154,8 @@
       $('v-name').textContent = item.name || 'Без названия';
       renderGallery();
       // Статус
-      const sp = $('v-status'); sp.className = 'status-pill ' + (item.status||'have');
-      sp.textContent = statusLabel(item.status || 'have');
+      const sp = $('v-status'); sp.className = 'status-pill ' + (item.status||'active');
+      sp.textContent = statusLabel(item.status || 'active');
       // Категория
       const catEl = $('v-category');
       if (item.category) { catEl.style.display=''; catEl.textContent = labelOf(taxonomy.categories, item.category); }
@@ -209,7 +209,7 @@
       $('f-location').value = item.location || '';
       $('f-quantity').value = item.quantity ?? 1;
       $('f-description').value = item.description || '';
-      status = item.status || 'have';
+      status = item.status || 'active';
       selectedTags = new Set(item.tags || []);
       chars = (item.characteristics && item.characteristics.length)
         ? item.characteristics.map(c => ({ label:c.label||'', value:c.value||'', type:c.type||'text' }))

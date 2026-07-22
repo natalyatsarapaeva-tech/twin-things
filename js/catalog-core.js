@@ -106,11 +106,12 @@ export function templateCharacteristics(category) {
 }
 
 // ── Статусы вещи ────────────────────────────────────────────────────────────
-export const ITEM_STATUSES = ['have', 'wishlist', 'lent', 'discarded'];
+export const ITEM_STATUSES = ['active', 'spare', 'repair', 'giveaway', 'trash'];
 export const STATUS_LABELS = {
-  have: 'В наличии', wishlist: 'Вишлист', lent: 'Отдано/одолжено', discarded: 'Списано',
+  active: 'Актуально', spare: 'Запас', repair: 'Ремонт', giveaway: 'Отдать', trash: 'Мусор',
 };
-export function statusLabel(status) { return STATUS_LABELS[status] || status || 'В наличии'; }
+export const DEFAULT_STATUS = 'active';
+export function statusLabel(status) { return STATUS_LABELS[status] || status || STATUS_LABELS[DEFAULT_STATUS]; }
 
 // Тег «на продажу» — сквозной, используется для статистики (не путать со статусом).
 export const FOR_SALE_TAG = 'for-sale';
@@ -132,7 +133,7 @@ export function makeItem(fields = {}, now = () => new Date().toISOString(), idFn
     photos: Array.isArray(fields.photos) ? fields.photos : [],
     location: fields.location || '',
     quantity: Number.isFinite(fields.quantity) ? fields.quantity : 1,
-    status: ITEM_STATUSES.includes(fields.status) ? fields.status : 'have',
+    status: ITEM_STATUSES.includes(fields.status) ? fields.status : DEFAULT_STATUS,
     source: fields.source || 'manual',
     aiGenerated: !!fields.aiGenerated,
     createdBy: fields.createdBy || null,
@@ -204,7 +205,7 @@ export function filterItems(items = [], filters = {}) {
   const loc = (filters.location || '').trim().toLowerCase();
   return items.filter(it => {
     if (filters.category && it.category !== filters.category) return false;
-    if (filters.status && (it.status || 'have') !== filters.status) return false;
+    if (filters.status && (it.status || DEFAULT_STATUS) !== filters.status) return false;
     if (filters.tag && !(it.tags || []).includes(filters.tag)) return false;
     if (loc && !String(it.location || '').toLowerCase().includes(loc)) return false;
     if (text && !matchesText(it, text)) return false;

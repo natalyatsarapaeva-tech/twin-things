@@ -141,9 +141,11 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .detail-name{font-family:'Spectral',serif;font-size:24px;color:var(--slate);font-weight:600;line-height:1.2;}
 .detail-meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
 .status-pill{font-size:12px;padding:4px 10px;border-radius:12px;font-weight:600;background:var(--green-pale);color:var(--green);}
-.status-pill.wishlist{background:var(--lav-pale);color:var(--lavender);}
-.status-pill.lent{background:#f5ecd6;color:var(--amber);}
-.status-pill.discarded{background:var(--surface2);color:var(--text-soft);}
+.status-pill.active{background:var(--green-pale);color:var(--green);}
+.status-pill.spare{background:var(--blue-pale);color:var(--blue);}
+.status-pill.repair{background:#f5ecd6;color:var(--amber);}
+.status-pill.giveaway{background:var(--lav-pale);color:var(--lavender);}
+.status-pill.trash{background:var(--surface2);color:var(--text-soft);}
 .detail-desc{color:var(--text);font-size:15px;line-height:1.5;}
 .char-view{display:flex;flex-direction:column;gap:2px;background:var(--white);border-radius:12px;padding:6px 14px;box-shadow:0 2px 12px var(--shadow);}
 .char-view-row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px;}

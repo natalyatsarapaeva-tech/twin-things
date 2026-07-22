@@ -75,6 +75,6 @@ test('templateCharacteristics: пары из шаблона, generic для не
 test('дефолтная таксономия и статусы непусты и консистентны', () => {
   assert.ok(DEFAULT_CATEGORIES.length >= 3);
   assert.ok(DEFAULT_CATEGORIES.every(c => c.id && c.label));
-  assert.ok(ITEM_STATUSES.includes('have'));
+  assert.ok(ITEM_STATUSES.includes('active'));
   assert.ok(ITEM_STATUSES.includes('for-sale') === false); // for-sale — это тег, не статус
 });
