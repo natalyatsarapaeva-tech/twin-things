@@ -24,12 +24,13 @@ export {
 } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-storage.js";
 
 const firebaseConfig = {
-  apiKey: "REPLACE_ME",
-  authDomain: "REPLACE_ME.firebaseapp.com",
-  projectId: "REPLACE_ME",
-  storageBucket: "REPLACE_ME.firebasestorage.app",
-  messagingSenderId: "REPLACE_ME",
-  appId: "REPLACE_ME"
+  apiKey: "AIzaSyAPcBPgSPVktzEVJMzC4mah5dRRy_cKC_0",
+  authDomain: "twin-things.firebaseapp.com",
+  projectId: "twin-things",
+  storageBucket: "twin-things.firebasestorage.app",
+  messagingSenderId: "770184203742",
+  appId: "1:770184203742:web:3c800d6fdbcaf214b9614f",
+  measurementId: "G-7F9DFGT31Z"
 };
 
 const app = initializeApp(firebaseConfig);
