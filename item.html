@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Twin Things">
+  <link rel="manifest" href="manifest.json">
+  <title>Вещь — Twin Things</title>
+  <link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="loading">
+    <div class="loading-icon">🏠</div>
+    <div class="loading-text">Twin Things</div>
+  </div>
+
+  <div id="app" style="display:none;">
+    <header class="page-header">
+      <a class="back-btn" href="index.html" title="Назад">←</a>
+      <div class="page-title" id="hdr-title">Вещь</div>
+      <button class="header-action" id="btn-edit">✎ Изменить</button>
+      <button class="header-action" id="btn-cancel" style="display:none;">Отмена</button>
+    </header>
+
+    <!-- ── Просмотр ── -->
+    <main class="page-body" id="view">
+      <div id="gallery"></div>
+
+      <div class="detail-meta">
+        <span class="status-pill" id="v-status">В наличии</span>
+        <span class="item-cat" id="v-category" style="display:none;"></span>
+      </div>
+      <div class="detail-name" id="v-name">—</div>
+      <div class="item-tags" id="v-tags"></div>
+      <div class="detail-desc" id="v-desc" style="display:none;"></div>
+
+      <div id="v-chars-wrap" style="display:none;">
+        <div class="section-label">Характеристики</div>
+        <div class="char-view" id="v-chars"></div>
+      </div>
+
+      <div id="v-place-wrap" style="display:none;">
+        <div class="section-label">Расположение</div>
+        <div class="char-view" id="v-place"></div>
+      </div>
+
+      <div class="attribution" id="v-attr"></div>
+      <button class="btn btn-danger btn-block" id="btn-delete">Удалить вещь</button>
+    </main>
+
+    <!-- ── Редактирование ── -->
+    <main class="page-body" id="edit" style="display:none;">
+      <div class="field-group">
+        <label class="field-label">Фото</label>
+        <div class="photo-strip" id="photo-strip">
+          <label class="photo-add" id="photo-add">
+            <span class="pa-icon">＋</span><span>Добавить</span>
+            <input type="file" accept="image/*" multiple hidden id="photo-input">
+          </label>
+        </div>
+        <div class="hint">Изменения фото сохраняются сразу.</div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label" for="f-name">Название *</label>
+        <input class="field-input" id="f-name" autocomplete="off">
+      </div>
+
+      <div class="field-group">
+        <label class="field-label" for="f-category">Категория</label>
+        <select class="select-input" id="f-category"></select>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">Теги</label>
+        <div class="chip-row" id="tag-chips"></div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">Характеристики</label>
+        <div class="char-editor" id="char-editor"></div>
+        <button class="add-field-btn" id="btn-add-char" type="button">＋ добавить поле</button>
+      </div>
+
+      <div class="row-2">
+        <div class="field-group">
+          <label class="field-label" for="f-location">Локация</label>
+          <input class="field-input" id="f-location" autocomplete="off">
+        </div>
+        <div class="field-group">
+          <label class="field-label" for="f-quantity">Количество</label>
+          <input class="field-input" id="f-quantity" type="number" min="1">
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">Статус</label>
+        <div class="chip-row" id="status-chips"></div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label" for="f-description">Описание</label>
+        <textarea class="field-textarea" id="f-description"></textarea>
+      </div>
+
+      <button class="btn btn-primary btn-block" id="btn-save">Сохранить изменения</button>
+    </main>
+  </div>
+
+  <div class="saving-overlay" id="saving">
+    <div class="saving-box"><span class="spinner"></span><span id="saving-text">Сохраняю…</span></div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script type="module">
+    import {
+      initAuth, listMyCatalogs, resolveActiveCatalog, loadTaxonomy,
+      getItem, saveItem, deleteItem, uploadItemPhoto, deleteItemPhoto, currentUid,
+    } from './js/store.js';
+    import {
+      templateCharacteristics, ITEM_STATUSES, statusLabel, labelOf, primaryPhoto,
+    } from './js/catalog-core.js';
+
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
+    function busy(on, text){ if(text) $('saving-text').textContent=text; $('saving').classList.toggle('on', on); }
+
+    const params = new URLSearchParams(location.search);
+    const itemId = params.get('id');
+    let cid = null, item = null, taxonomy = { categories:[], tags:[], templates:{} };
+    let selectedTags = new Set(), status = 'have', chars = [];
+
+    (async function boot(){
+      const user = await initAuth();
+      if (!user) { location.href='index.html'; return; }
+      if (!itemId) { location.href='index.html'; return; }
+      const cats = await listMyCatalogs();
+      cid = resolveActiveCatalog(cats);
+      taxonomy = await loadTaxonomy(cid);
+      item = await getItem(cid, itemId);
+      if (!item) { $('loading').style.display='none'; toast('Вещь не найдена'); setTimeout(()=>location.href='index.html',1200); return; }
+      renderView();
+      $('loading').style.display='none';
+      $('app').style.display='block';
+      if (window.attachVoiceBtn) { attachVoiceBtn($('f-name')); attachVoiceBtn($('f-description')); }
+    })().catch(err => { console.error(err); $('loading').style.display='none'; toast('Ошибка загрузки'); });
+
+    // ── Просмотр ──
+    function renderView(){
+      $('hdr-title').textContent = item.name || 'Вещь';
+      $('v-name').textContent = item.name || 'Без названия';
+      renderGallery();
+      // Статус
+      const sp = $('v-status'); sp.className = 'status-pill ' + (item.status||'have');
+      sp.textContent = statusLabel(item.status || 'have');
+      // Категория
+      const catEl = $('v-category');
+      if (item.category) { catEl.style.display=''; catEl.textContent = labelOf(taxonomy.categories, item.category); }
+      else catEl.style.display='none';
+      // Теги
+      $('v-tags').innerHTML = (item.tags||[])
+        .map(t => `<span class="item-tag">${esc(labelOf(taxonomy.tags, t))}</span>`).join('');
+      // Описание
+      const d = $('v-desc');
+      if (item.description) { d.style.display=''; d.textContent = item.description; } else d.style.display='none';
+      // Характеристики
+      const filled = (item.characteristics||[]).filter(c => (c.value||'').trim());
+      const cw = $('v-chars-wrap');
+      if (filled.length) {
+        cw.style.display='';
+        $('v-chars').innerHTML = filled.map(c =>
+          `<div class="char-view-row"><span class="cv-label">${esc(c.label)}</span><span class="cv-value">${esc(c.value)}</span></div>`).join('');
+      } else cw.style.display='none';
+      // Локация / количество
+      const place = [];
+      if (item.location) place.push(['Локация', item.location]);
+      place.push(['Количество', String(item.quantity ?? 1)]);
+      $('v-place-wrap').style.display = '';
+      $('v-place').innerHTML = place.map(([k,v]) =>
+        `<div class="char-view-row"><span class="cv-label">${esc(k)}</span><span class="cv-value">${esc(v)}</span></div>`).join('');
+      // Атрибуция
+      const who = item.createdBy === currentUid() ? 'вами' : 'другим участником';
+      const when = item.createdAt ? new Date(item.createdAt).toLocaleDateString('ru-RU') : '';
+      $('v-attr').textContent = item.aiGenerated ? `Создано ИИ${when?', '+when:''}` : `Добавлено ${who}${when?', '+when:''}`;
+    }
+
+    function renderGallery(){
+      const photos = item.photos || [];
+      const g = $('gallery');
+      if (!photos.length) { g.innerHTML = '<div class="detail-hero placeholder">📦</div>'; return; }
+      const cover = primaryPhoto(item);
+      let html = `<img class="detail-hero" id="hero" src="${esc(cover.url)}" alt="">`;
+      if (photos.length > 1) {
+        html += `<div class="photo-strip" style="margin-top:10px;">` + photos.map(p =>
+          `<div class="photo-tile" style="width:70px;height:70px;cursor:pointer;" data-url="${esc(p.url)}"><img src="${esc(p.thumbUrl||p.url)}" alt=""></div>`).join('') + `</div>`;
+      }
+      g.innerHTML = html;
+      g.querySelectorAll('.photo-tile').forEach(t => t.onclick = () => { $('hero').src = t.dataset.url; });
+    }
+
+    // ── Переключение вид/редактирование ──
+    $('btn-edit').onclick = () => enterEdit();
+    $('btn-cancel').onclick = () => exitEdit();
+    function enterEdit(){
+      $('f-name').value = item.name || '';
+      $('f-location').value = item.location || '';
+      $('f-quantity').value = item.quantity ?? 1;
+      $('f-description').value = item.description || '';
+      status = item.status || 'have';
+      selectedTags = new Set(item.tags || []);
+      chars = (item.characteristics && item.characteristics.length)
+        ? item.characteristics.map(c => ({ label:c.label||'', value:c.value||'', type:c.type||'text' }))
+        : templateCharacteristics(item.category);
+      buildCategorySelect(); buildTagChips(); buildStatusChips(); renderChars(); renderEditPhotos();
+      $('view').style.display='none'; $('edit').style.display='';
+      $('btn-edit').style.display='none'; $('btn-cancel').style.display='';
+      window.scrollTo(0,0);
+    }
+    function exitEdit(){
+      $('edit').style.display='none'; $('view').style.display='';
+      $('btn-cancel').style.display='none'; $('btn-edit').style.display='';
+      renderView();
+    }
+
+    function buildCategorySelect(){
+      $('f-category').innerHTML = taxonomy.categories
+        .map(c => `<option value="${esc(c.id)}" ${c.id===item.category?'selected':''}>${esc(c.label)}</option>`).join('');
+      $('f-category').onchange = () => {
+        const filled = chars.filter(c => c.value && c.value.trim());
+        const tpl = templateCharacteristics($('f-category').value);
+        const seen = new Set(filled.map(c => c.label.toLowerCase()));
+        chars = [...filled, ...tpl.filter(t => !seen.has(t.label.toLowerCase()))];
+        renderChars();
+      };
+    }
+    function buildTagChips(){
+      const wrap = $('tag-chips');
+      if (!taxonomy.tags.length) { wrap.innerHTML = '<span class="hint">Тегов пока нет.</span>'; return; }
+      wrap.innerHTML = taxonomy.tags.map(t =>
+        `<button type="button" class="chip ${selectedTags.has(t.id)?'on':''}" data-tag="${esc(t.id)}">${esc(t.label)}</button>`).join('');
+      wrap.querySelectorAll('.chip').forEach(ch => ch.onclick = () => {
+        const id = ch.dataset.tag;
+        if (selectedTags.has(id)) { selectedTags.delete(id); ch.classList.remove('on'); }
+        else { selectedTags.add(id); ch.classList.add('on'); }
+      });
+    }
+    function buildStatusChips(){
+      $('status-chips').innerHTML = ITEM_STATUSES.map(s =>
+        `<button type="button" class="chip ${s===status?'on':''}" data-status="${s}">${esc(statusLabel(s))}</button>`).join('');
+      $('status-chips').querySelectorAll('.chip').forEach(ch => ch.onclick = () => {
+        status = ch.dataset.status;
+        $('status-chips').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.status===status));
+      });
+    }
+    function renderChars(){
+      const ed = $('char-editor');
+      ed.innerHTML = chars.map((c,i) => `
+        <div class="char-row" data-i="${i}">
+          <input class="field-input char-label" placeholder="Поле" value="${esc(c.label)}">
+          <input class="field-input char-value" placeholder="Значение" value="${esc(c.value)}"
+                 type="${c.type==='date'?'date':'text'}" inputmode="${(c.type==='number'||c.type==='money')?'decimal':'text'}">
+          <button class="char-remove" type="button">✕</button>
+        </div>`).join('');
+      ed.querySelectorAll('.char-row').forEach(row => {
+        const i = +row.dataset.i;
+        row.querySelector('.char-label').oninput = e => chars[i].label = e.target.value;
+        row.querySelector('.char-value').oninput = e => chars[i].value = e.target.value;
+        row.querySelector('.char-remove').onclick = () => { chars.splice(i,1); renderChars(); };
+      });
+    }
+    $('btn-add-char').onclick = () => { chars.push({ label:'', value:'', type:'text' }); renderChars(); };
+
+    // ── Фото в режиме редактирования (persist сразу) ──
+    function renderEditPhotos(){
+      const strip = $('photo-strip'), addBtn = $('photo-add');
+      strip.querySelectorAll('.photo-tile').forEach(t => t.remove());
+      (item.photos||[]).forEach((p, i) => {
+        const tile = document.createElement('div');
+        tile.className = 'photo-tile';
+        tile.innerHTML = `
+          ${p.isPrimary ? '<span class="p-badge">обложка</span>' : ''}
+          <img src="${esc(p.thumbUrl||p.url)}" alt="">
+          <button class="p-del" type="button">✕</button>
+          ${!p.isPrimary ? '<button class="p-cover" type="button">Обложка</button>' : ''}`;
+        tile.querySelector('.p-del').onclick = () => removePhoto(i);
+        const cover = tile.querySelector('.p-cover');
+        if (cover) cover.onclick = () => setCover(i);
+        strip.insertBefore(tile, addBtn);
+      });
+    }
+    $('photo-input').onchange = async (e) => {
+      const files = Array.from(e.target.files); e.target.value='';
+      if (!files.length) return;
+      $('photo-add').classList.add('busy');
+      busy(true, 'Загружаю фото…');
+      try {
+        const photos = item.photos ? item.photos.slice() : [];
+        let idx = photos.length;
+        for (const file of files) {
+          const isPrimary = photos.length === 0;
+          const desc = await uploadItemPhoto(cid, item.id, file, Date.now() + '-' + idx, isPrimary);
+          photos.push(desc); idx++;
+        }
+        item.photos = photos;
+        item = await saveItem(cid, item);
+        renderEditPhotos();
+        toast('Фото добавлено');
+      } catch (err) { console.error(err); toast('Не удалось загрузить фото'); }
+      finally { busy(false); $('photo-add').classList.remove('busy'); }
+    };
+    async function removePhoto(i){
+      const photos = item.photos.slice();
+      const [gone] = photos.splice(i, 1);
+      if (gone.isPrimary && photos.length) photos[0].isPrimary = true;
+      busy(true, 'Удаляю фото…');
+      try {
+        item.photos = photos;
+        item = await saveItem(cid, item);
+        await deleteItemPhoto(gone);
+        renderEditPhotos();
+      } catch (err) { console.error(err); toast('Не удалось удалить фото'); }
+      finally { busy(false); }
+    }
+    async function setCover(i){
+      const photos = item.photos.map((p,idx) => ({ ...p, isPrimary: idx===i }));
+      busy(true, 'Сохраняю обложку…');
+      try { item.photos = photos; item = await saveItem(cid, item); renderEditPhotos(); }
+      catch (err) { console.error(err); toast('Ошибка'); }
+      finally { busy(false); }
+    }
+
+    // ── Сохранение текстовых полей ──
+    $('btn-save').onclick = async () => {
+      const name = $('f-name').value.trim();
+      if (!name) { toast('Введи название'); $('f-name').focus(); return; }
+      const cleanChars = chars
+        .map(c => ({ label:(c.label||'').trim(), value:(c.value||'').trim(), type:c.type||'text' }))
+        .filter(c => c.label || c.value);
+      busy(true, 'Сохраняю…');
+      try {
+        Object.assign(item, {
+          name,
+          description: $('f-description').value.trim(),
+          category: $('f-category').value,
+          tags: Array.from(selectedTags),
+          characteristics: cleanChars,
+          location: $('f-location').value.trim(),
+          quantity: Math.max(1, parseInt($('f-quantity').value,10) || 1),
+          status,
+        });
+        item = await saveItem(cid, item);
+        busy(false);
+        exitEdit();
+        toast('Сохранено');
+      } catch (err) { console.error(err); busy(false); toast('Не удалось сохранить'); }
+    };
+
+    // ── Удаление вещи ──
+    $('btn-delete').onclick = async () => {
+      if (!confirm('Удалить эту вещь? Действие нельзя отменить.')) return;
+      busy(true, 'Удаляю…');
+      try { await deleteItem(cid, item); location.href='index.html'; }
+      catch (err) { console.error(err); busy(false); toast('Не удалось удалить'); }
+    };
+  </script>
+  <script src="voice.js"></script>
+  <script src="pwa.js"></script>
+</body>
+</html>

@@ -45,12 +45,23 @@
       </div>
       <div class="header-stats">
         <span class="stat-chip" id="stat-count">0 вещей</span>
+        <span class="stat-chip" id="stat-value" style="display:none;"></span>
+        <span class="stat-chip" id="stat-sale" style="display:none;"></span>
         <span class="stat-chip" id="stat-role">—</span>
       </div>
     </header>
 
+    <div class="toolbar" id="toolbar" style="display:none;">
+      <div class="search-row">
+        <input class="search-input" id="search" placeholder="Поиск по названию, тегу, характеристике…" autocomplete="off">
+        <select class="select-input sort-select" id="sort"></select>
+      </div>
+      <div class="filter-scroll" id="filters"></div>
+      <button class="filter-clear" id="filter-clear" style="display:none;">Сбросить фильтры</button>
+    </div>
+
     <main class="items-grid" id="items-grid">
-      <!-- Wave 1 наполнит грид карточками; пока — пустое состояние -->
+      <!-- наполняется карточками -->
     </main>
 
     <div class="fab-group">
@@ -82,12 +93,22 @@
       initAuth, currentUid, currentUserName, currentUserEmail,
       signInGoogle, signInEmail, registerEmail, signOutUser,
       listMyCatalogs, ensureFirstCatalog, getActiveCatalogId, setActiveCatalogId,
-      resolveActiveCatalog, createCatalog, joinCatalogByCode, listItems,
+      resolveActiveCatalog, createCatalog, joinCatalogByCode, listItems, loadTaxonomy,
     } from './js/store.js';
+    import {
+      filterItems, sortItems, catalogStats, primaryPhoto, labelOf,
+      SORT_OPTIONS, ITEM_STATUSES, statusLabel, formatMoney,
+    } from './js/catalog-core.js';
 
     const $ = (id) => document.getElementById(id);
     const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     let mode = 'signin'; // signin | register
+
+    // Состояние грида
+    let allItems = [];
+    let taxonomy = { categories: [], tags: [], templates: {} };
+    let sortKey = localStorage.getItem('itemsSort') || 'newest';
+    const filters = { text: '', category: '', tag: '', status: '' };
 
     function toast(msg) {
       const t = $('toast'); t.textContent = msg; t.classList.add('show');
@@ -148,10 +169,28 @@
       $('cs-name').textContent = active?.name || 'Каталог';
       $('stat-role').textContent = active?.role === 'owner' ? '👑 владелец' : '✎ редактор';
       renderCatalogList(cats, activeId);
-      // Грид вещей (Wave 1 добавит карточки/фильтры; здесь — базовый рендер).
-      const items = activeId ? await listItems(activeId) : [];
-      renderItems(items);
-      $('stat-count').textContent = `${items.length} ${plural(items.length)}`;
+
+      [taxonomy, allItems] = await Promise.all([
+        activeId ? loadTaxonomy(activeId) : Promise.resolve({ categories: [], tags: [], templates: {} }),
+        activeId ? listItems(activeId) : Promise.resolve([]),
+      ]);
+
+      // Статистика хедера по всему каталогу (не по фильтру).
+      const stats = catalogStats(allItems);
+      $('stat-count').textContent = `${stats.count} ${plural(stats.count)}`;
+      setChip('stat-value', stats.totalValue > 0, `💰 ${formatMoney(stats.totalValue)}`);
+      setChip('stat-sale', stats.forSale > 0, `🏷 ${stats.forSale} на продажу`);
+
+      buildSort();
+      buildFilters();
+      $('toolbar').style.display = allItems.length ? 'flex' : 'none';
+      applyFilters();
+    }
+
+    function setChip(id, show, text) {
+      const el = $(id);
+      el.style.display = show ? '' : 'none';
+      if (show) el.textContent = text;
     }
 
     function plural(n) {
@@ -162,26 +201,80 @@
       return 'вещей';
     }
 
+    // ── Тулбар: сортировка + фильтры ──
+    function buildSort() {
+      const sel = $('sort');
+      if (sel.dataset.built) { sel.value = sortKey; return; }
+      sel.innerHTML = SORT_OPTIONS.map(o => `<option value="${o.id}">${esc(o.label)}</option>`).join('');
+      sel.value = sortKey;
+      sel.onchange = () => { sortKey = sel.value; localStorage.setItem('itemsSort', sortKey); applyFilters(); };
+      sel.dataset.built = '1';
+    }
+
+    function buildFilters() {
+      const chips = [];
+      for (const c of taxonomy.categories) chips.push(chipHtml('category', c.id, c.label, '📁'));
+      for (const t of taxonomy.tags) chips.push(chipHtml('tag', t.id, t.label, '🏷'));
+      for (const s of ITEM_STATUSES) chips.push(chipHtml('status', s, statusLabel(s), '•'));
+      $('filters').innerHTML = chips.join('');
+      $('filters').querySelectorAll('.chip').forEach(ch => ch.onclick = () => {
+        const { dim, val } = ch.dataset;
+        filters[dim] = filters[dim] === val ? '' : val; // toggle
+        syncChipState(); applyFilters();
+      });
+      syncChipState();
+    }
+    function chipHtml(dim, val, label, icon) {
+      return `<button type="button" class="chip" data-dim="${dim}" data-val="${esc(val)}">${icon} ${esc(label)}</button>`;
+    }
+    function syncChipState() {
+      $('filters').querySelectorAll('.chip').forEach(ch => {
+        ch.classList.toggle('on', filters[ch.dataset.dim] === ch.dataset.val);
+      });
+      const any = filters.text || filters.category || filters.tag || filters.status;
+      $('filter-clear').style.display = any ? '' : 'none';
+    }
+
+    $('search').oninput = (e) => { filters.text = e.target.value; syncChipState(); applyFilters(); };
+    $('filter-clear').onclick = () => {
+      filters.text = filters.category = filters.tag = filters.status = '';
+      $('search').value = '';
+      syncChipState(); applyFilters();
+    };
+
+    function applyFilters() {
+      const filtered = sortItems(filterItems(allItems, filters), sortKey);
+      renderItems(filtered);
+    }
+
     function renderItems(items) {
       const grid = $('items-grid');
-      if (!items.length) {
+      if (!allItems.length) {
         grid.innerHTML = `<div class="empty-state fade-in">
           <div class="es-icon">📦</div>
           <div>Пока пусто. Добавь первую вещь — вручную или по фото через ✨ AI.</div>
         </div>`;
         return;
       }
+      if (!items.length) {
+        grid.innerHTML = `<div class="empty-state fade-in">
+          <div class="es-icon">🔍</div>
+          <div>Ничего не найдено. Измени запрос или сбрось фильтры.</div>
+        </div>`;
+        return;
+      }
       grid.innerHTML = items.map(it => {
-        const cover = (it.photos || []).find(p => p.isPrimary) || (it.photos || [])[0];
+        const cover = primaryPhoto(it);
         const thumb = cover
           ? `<img class="item-thumb" src="${esc(cover.thumbUrl || cover.url)}" alt="" loading="lazy">`
           : `<div class="item-thumb placeholder">📦</div>`;
-        const tags = (it.tags || []).slice(0, 3).map(t => `<span class="item-tag">${esc(t)}</span>`).join('');
-        return `<button class="item-card fade-in" onclick="location.href='item.html?id=${esc(it.id)}'">
+        const tags = (it.tags || []).slice(0, 3)
+          .map(t => `<span class="item-tag">${esc(labelOf(taxonomy.tags, t))}</span>`).join('');
+        return `<button class="item-card fade-in" onclick="location.href='item.html?id=${encodeURIComponent(it.id)}'">
           ${thumb}
           <div class="item-body">
             <div class="item-name">${esc(it.name || 'Без названия')}</div>
-            ${it.category ? `<span class="item-cat">${esc(it.category)}</span>` : ''}
+            ${it.category ? `<span class="item-cat">${esc(labelOf(taxonomy.categories, it.category))}</span>` : ''}
             <div class="item-tags">${tags}</div>
           </div>
         </button>`;

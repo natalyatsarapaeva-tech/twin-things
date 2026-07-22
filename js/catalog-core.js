@@ -105,4 +105,181 @@ export function templateCharacteristics(category) {
   return tpl.map(f => ({ label: f.label, value: '', type: f.type }));
 }
 
+// ── Статусы вещи ────────────────────────────────────────────────────────────
 export const ITEM_STATUSES = ['have', 'wishlist', 'lent', 'discarded'];
+export const STATUS_LABELS = {
+  have: 'В наличии', wishlist: 'Вишлист', lent: 'Отдано/одолжено', discarded: 'Списано',
+};
+export function statusLabel(status) { return STATUS_LABELS[status] || status || 'В наличии'; }
+
+// Тег «на продажу» — сквозной, используется для статистики (не путать со статусом).
+export const FOR_SALE_TAG = 'for-sale';
+
+// ── Фабрика документа вещи (§5.1) ───────────────────────────────────────────
+// Чистая: id/время подаются извне, чтобы тестировалось детерминированно.
+export function makeItem(fields = {}, now = () => new Date().toISOString(), idFn = makeItemId) {
+  const ts = now();
+  const category = fields.category || 'generic';
+  return {
+    id: fields.id || idFn(),
+    name: (fields.name || '').trim(),
+    description: fields.description || '',
+    category,
+    tags: Array.isArray(fields.tags) ? fields.tags : [],
+    characteristics: Array.isArray(fields.characteristics)
+      ? fields.characteristics
+      : templateCharacteristics(category),
+    photos: Array.isArray(fields.photos) ? fields.photos : [],
+    location: fields.location || '',
+    quantity: Number.isFinite(fields.quantity) ? fields.quantity : 1,
+    status: ITEM_STATUSES.includes(fields.status) ? fields.status : 'have',
+    source: fields.source || 'manual',
+    aiGenerated: !!fields.aiGenerated,
+    createdBy: fields.createdBy || null,
+    createdAt: fields.createdAt || ts,
+    updatedAt: ts,
+  };
+}
+
+// ── Деньги ──────────────────────────────────────────────────────────────────
+// Достаёт число из значения характеристики: "3 500 ₽", "3,500.50" → 3500 / 3500.5.
+export function parseMoney(value) {
+  if (value == null) return null;
+  const raw = String(value).replace(/\s/g, '').replace(/[^\d.,-]/g, '');
+  if (!raw) return null;
+  const hasDot = raw.includes('.'), hasComma = raw.includes(',');
+  let normalized;
+  if (hasDot && hasComma) {
+    // Оба разделителя: последний — десятичный, остальные — группировочные.
+    const lastSep = Math.max(raw.lastIndexOf('.'), raw.lastIndexOf(','));
+    normalized = raw.slice(0, lastSep).replace(/[.,]/g, '') + '.' + raw.slice(lastSep + 1).replace(/[.,]/g, '');
+  } else if (hasDot || hasComma) {
+    const sep = hasDot ? '.' : ',';
+    const parts = raw.split(sep);
+    // Один разделитель, за которым ровно 3 цифры → группировочный (тысячи).
+    const grouping = parts.length > 2 || (parts.length === 2 && parts[1].length === 3);
+    normalized = grouping ? raw.replace(/[.,]/g, '') : raw.replace(sep, '.');
+  } else {
+    normalized = raw;
+  }
+  const n = parseFloat(normalized);
+  return Number.isFinite(n) ? n : null;
+}
+
+// Формат для отображения суммарной ценности (без валюты — валюта у характеристики).
+export function formatMoney(n) {
+  if (!Number.isFinite(n)) return '0';
+  return Math.round(n).toLocaleString('ru-RU');
+}
+
+// Цена одной вещи = первая money-характеристика × количество.
+export function itemValue(item) {
+  const chars = item?.characteristics || [];
+  const priceChar = chars.find(c => c.type === 'money' && parseMoney(c.value) != null);
+  const unit = priceChar ? parseMoney(priceChar.value) : 0;
+  const qty = Number.isFinite(item?.quantity) ? item.quantity : 1;
+  return (unit || 0) * qty;
+}
+
+// ── Статистика каталога (хедер index.html) ──────────────────────────────────
+export function catalogStats(items = []) {
+  let totalValue = 0, forSale = 0;
+  for (const it of items) {
+    totalValue += itemValue(it);
+    if ((it.tags || []).includes(FOR_SALE_TAG)) forSale += 1;
+  }
+  return { count: items.length, totalValue, forSale };
+}
+
+// ── Обложка вещи ────────────────────────────────────────────────────────────
+export function primaryPhoto(item) {
+  const photos = item?.photos || [];
+  return photos.find(p => p.isPrimary) || photos[0] || null;
+}
+
+// ── Фильтрация и поиск ──────────────────────────────────────────────────────
+// filters = { text?, category?, tag?, status?, location? }. Пустые поля игнорятся.
+export function filterItems(items = [], filters = {}) {
+  const text = (filters.text || '').trim().toLowerCase();
+  const loc = (filters.location || '').trim().toLowerCase();
+  return items.filter(it => {
+    if (filters.category && it.category !== filters.category) return false;
+    if (filters.status && (it.status || 'have') !== filters.status) return false;
+    if (filters.tag && !(it.tags || []).includes(filters.tag)) return false;
+    if (loc && !String(it.location || '').toLowerCase().includes(loc)) return false;
+    if (text && !matchesText(it, text)) return false;
+    return true;
+  });
+}
+
+function matchesText(item, text) {
+  if (String(item.name || '').toLowerCase().includes(text)) return true;
+  if (String(item.description || '').toLowerCase().includes(text)) return true;
+  if (String(item.location || '').toLowerCase().includes(text)) return true;
+  return (item.characteristics || []).some(c =>
+    String(c.value || '').toLowerCase().includes(text) ||
+    String(c.label || '').toLowerCase().includes(text));
+}
+
+// ── Сортировка ──────────────────────────────────────────────────────────────
+export const SORT_OPTIONS = [
+  { id: 'newest', label: 'Сначала новые' },
+  { id: 'oldest', label: 'Сначала старые' },
+  { id: 'name',   label: 'По названию' },
+  { id: 'value',  label: 'По ценности' },
+];
+
+export function sortItems(items = [], key = 'newest') {
+  const arr = items.slice();
+  switch (key) {
+    case 'oldest':
+      return arr.sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+    case 'name':
+      return arr.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ru'));
+    case 'value':
+      return arr.sort((a, b) => itemValue(b) - itemValue(a));
+    case 'newest':
+    default:
+      return arr.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  }
+}
+
+// ── Резолв меток по id (категории/теги живут в meta/* как [{id,label}]) ──────
+export function labelOf(list, id) {
+  const found = (list || []).find(x => x.id === id);
+  return found ? found.label : id;
+}
+// Уникальные непустые локации из вещей — для фильтра по локации.
+export function collectLocations(items = []) {
+  const seen = new Set();
+  for (const it of items) {
+    const loc = String(it.location || '').trim();
+    if (loc) seen.add(loc);
+  }
+  return Array.from(seen).sort((a, b) => a.localeCompare(b, 'ru'));
+}
+
+// ── Хелперы для редактора таксономии (settings.html) ────────────────────────
+// Слаг id из метки (латиница/цифры/дефис); кириллица транслитерируется грубо.
+const TRANSLIT = {
+  а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'e',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',
+  м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'c',ч:'ch',ш:'sh',
+  щ:'sch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya',
+};
+export function slugifyLabel(label) {
+  const lower = String(label || '').toLowerCase().trim();
+  let out = '';
+  for (const ch of lower) out += (TRANSLIT[ch] ?? ch);
+  return out.replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'item';
+}
+// Добавляет запись {id,label} в список таксономии, гарантируя уникальный id.
+export function addTaxonomyEntry(list, label) {
+  const trimmed = String(label || '').trim();
+  if (!trimmed) return { list, entry: null };
+  const base = slugifyLabel(trimmed);
+  let id = base, n = 2;
+  const taken = new Set((list || []).map(x => x.id));
+  while (taken.has(id)) id = `${base}-${n++}`;
+  const entry = { id, label: trimmed };
+  return { list: [...(list || []), entry], entry };
+}
