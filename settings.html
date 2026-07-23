@@ -43,6 +43,16 @@
         </div>
       </div>
 
+      <!-- Отображение -->
+      <div class="card-block">
+        <h2>Отображение</h2>
+        <div class="field-group">
+          <label class="field-label" for="sort-default">Сортировка списка вещей</label>
+          <select class="select-input" id="sort-default"></select>
+          <div class="hint">Применяется на главной. «Отображать по» (срез чипов) выбирается прямо на главной.</div>
+        </div>
+      </div>
+
       <!-- Категории -->
       <div class="card-block">
         <h2>Категории</h2>
@@ -81,7 +91,7 @@
       initAuth, listMyCatalogs, resolveActiveCatalog, getCatalog, renameCatalog,
       loadTaxonomy, saveMeta, signOutUser, currentUserName, currentUserEmail,
     } from './js/store.js';
-    import { addTaxonomyEntry } from './js/catalog-core.js';
+    import { addTaxonomyEntry, SORT_OPTIONS } from './js/catalog-core.js';
 
     const $ = (id) => document.getElementById(id);
     const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -101,10 +111,19 @@
       $('c-name').value = cat?.name || '';
       $('join-code').textContent = cat?.joinCode || '——————';
       $('profile-line').textContent = (currentUserName() || '') + (currentUserEmail() ? ` · ${currentUserEmail()}` : '');
+      buildSortDefault();
       renderTax();
       $('loading').style.display='none';
       $('app').style.display='block';
     })().catch(err => { console.error(err); $('loading').style.display='none'; toast('Ошибка загрузки'); });
+
+    // ── Сортировка по умолчанию (общая с главной через localStorage) ──
+    function buildSortDefault() {
+      const sel = $('sort-default');
+      sel.innerHTML = SORT_OPTIONS.map(o => `<option value="${o.id}">${esc(o.label)}</option>`).join('');
+      sel.value = localStorage.getItem('itemsSort') || 'newest';
+      sel.onchange = () => { localStorage.setItem('itemsSort', sel.value); toast('Сортировка сохранена'); };
+    }
 
     // ── Переименование каталога ──
     $('btn-rename').onclick = async () => {

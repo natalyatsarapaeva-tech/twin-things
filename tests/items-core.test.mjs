@@ -4,6 +4,7 @@ import {
   makeItem, parseMoney, formatMoney, itemValue, catalogStats, primaryPhoto,
   filterItems, sortItems, SORT_OPTIONS, labelOf, collectLocations,
   slugifyLabel, addTaxonomyEntry, statusLabel, FOR_SALE_TAG,
+  itemRoom, collectRooms, DISPLAY_DIMENSIONS,
 } from '../js/catalog-core.js';
 
 const fixedNow = () => '2024-03-10T00:00:00.000Z';
@@ -133,6 +134,37 @@ test('labelOf / collectLocations', () => {
     makeItem({ name: 'D', location: 'Кухня' }),
   ];
   assert.deepEqual(collectLocations(items), ['Гараж', 'Кухня']);
+});
+
+test('itemRoom / collectRooms: первый сегмент локации', () => {
+  assert.equal(itemRoom({ location: 'Гараж / полка 2' }), 'Гараж');
+  assert.equal(itemRoom({ location: 'Кухня, шкаф' }), 'Кухня');
+  assert.equal(itemRoom({ location: 'Спальня' }), 'Спальня');
+  assert.equal(itemRoom({ location: '' }), '');
+  assert.equal(itemRoom({}), '');
+  const items = [
+    makeItem({ name: 'A', location: 'Гараж / полка 2' }),
+    makeItem({ name: 'B', location: 'Гараж / полка 5' }),
+    makeItem({ name: 'C', location: 'Кухня' }),
+    makeItem({ name: 'D', location: '' }),
+  ];
+  assert.deepEqual(collectRooms(items), ['Гараж', 'Кухня']);
+});
+
+test('filterItems: срез по комнате (room)', () => {
+  const items = [
+    makeItem({ name: 'A', location: 'Гараж / полка 2' }),
+    makeItem({ name: 'B', location: 'Кухня / ящик' }),
+    makeItem({ name: 'C', location: 'Гараж / стеллаж' }),
+  ];
+  assert.equal(filterItems(items, { room: 'Гараж' }).length, 2);
+  assert.equal(filterItems(items, { room: 'Кухня' }).length, 1);
+});
+
+test('DISPLAY_DIMENSIONS: пять срезов с id и label', () => {
+  assert.equal(DISPLAY_DIMENSIONS.length, 5);
+  assert.deepEqual(DISPLAY_DIMENSIONS.map(d => d.id), ['category','tag','location','room','status']);
+  assert.ok(DISPLAY_DIMENSIONS.every(d => d.label));
 });
 
 test('slugifyLabel: транслит кириллицы и латиница', () => {

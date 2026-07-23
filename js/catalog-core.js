@@ -198,8 +198,16 @@ export function primaryPhoto(item) {
   return photos.find(p => p.isPrimary) || photos[0] || null;
 }
 
+// ── Локация и «комната» ─────────────────────────────────────────────────────
+// «Комната» — первый сегмент локации до разделителя (│ «Гараж / полка 2» → «Гараж»).
+export function itemRoom(item) {
+  const loc = String(item?.location || '').trim();
+  if (!loc) return '';
+  return loc.split(/[\/,>|→-]/)[0].trim();
+}
+
 // ── Фильтрация и поиск ──────────────────────────────────────────────────────
-// filters = { text?, category?, tag?, status?, location? }. Пустые поля игнорятся.
+// filters = { text?, category?, tag?, status?, location?, room? }. Пустые — игнор.
 export function filterItems(items = [], filters = {}) {
   const text = (filters.text || '').trim().toLowerCase();
   const loc = (filters.location || '').trim().toLowerCase();
@@ -207,6 +215,7 @@ export function filterItems(items = [], filters = {}) {
     if (filters.category && it.category !== filters.category) return false;
     if (filters.status && (it.status || DEFAULT_STATUS) !== filters.status) return false;
     if (filters.tag && !(it.tags || []).includes(filters.tag)) return false;
+    if (filters.room && itemRoom(it) !== filters.room) return false;
     if (loc && !String(it.location || '').toLowerCase().includes(loc)) return false;
     if (text && !matchesText(it, text)) return false;
     return true;
@@ -230,6 +239,15 @@ export const SORT_OPTIONS = [
   { id: 'value',  label: 'По ценности' },
 ];
 
+// ── Срезы отображения (чипы в шапке главной) ────────────────────────────────
+export const DISPLAY_DIMENSIONS = [
+  { id: 'category', label: 'Категории' },
+  { id: 'tag',      label: 'Тэги' },
+  { id: 'location', label: 'Локации' },
+  { id: 'room',     label: 'Комнаты' },
+  { id: 'status',   label: 'Статусы' },
+];
+
 export function sortItems(items = [], key = 'newest') {
   const arr = items.slice();
   switch (key) {
@@ -249,6 +267,12 @@ export function sortItems(items = [], key = 'newest') {
 export function labelOf(list, id) {
   const found = (list || []).find(x => x.id === id);
   return found ? found.label : id;
+}
+// Уникальные непустые «комнаты» (первый сегмент локации) — для среза по комнатам.
+export function collectRooms(items = []) {
+  const seen = new Set();
+  for (const it of items) { const r = itemRoom(it); if (r) seen.add(r); }
+  return Array.from(seen).sort((a, b) => a.localeCompare(b, 'ru'));
 }
 // Уникальные непустые локации из вещей — для фильтра по локации.
 export function collectLocations(items = []) {

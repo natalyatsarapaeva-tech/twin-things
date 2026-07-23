@@ -5,7 +5,7 @@
  * Cross-origin (Firestore, Storage, OpenAI worker, Google Fonts) — мимо кэша.
  * Поднимай CACHE при выкатке изменений, чтобы старый кэш сбрасывался.
  */
-const CACHE = 'twin-things-v6';
+const CACHE = 'twin-things-v7';
 const ASSETS = [
   './',
   './index.html',

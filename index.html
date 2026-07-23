@@ -54,7 +54,10 @@
     <div class="toolbar" id="toolbar" style="display:none;">
       <div class="search-row">
         <input class="search-input" id="search" placeholder="Поиск по названию, тегу, характеристике…" autocomplete="off">
-        <select class="select-input sort-select" id="sort"></select>
+      </div>
+      <div class="group-row">
+        <label class="group-label" for="group-by">Отображать по</label>
+        <select class="select-input" id="group-by"></select>
       </div>
       <div class="filter-scroll" id="filters"></div>
       <div class="toolbar-foot">
@@ -117,7 +120,8 @@
     } from './js/store.js';
     import {
       filterItems, sortItems, catalogStats, primaryPhoto, labelOf,
-      SORT_OPTIONS, ITEM_STATUSES, statusLabel, formatMoney,
+      ITEM_STATUSES, statusLabel, formatMoney,
+      collectLocations, collectRooms, DISPLAY_DIMENSIONS,
     } from './js/catalog-core.js';
 
     const $ = (id) => document.getElementById(id);
@@ -128,8 +132,10 @@
     let allItems = [];
     let activeCid = null;
     let taxonomy = { categories: [], tags: [], templates: {} };
-    let sortKey = localStorage.getItem('itemsSort') || 'newest';
-    const filters = { text: '', category: '', tag: '', status: '' };
+    let sortKey = localStorage.getItem('itemsSort') || 'newest';  // задаётся в настройках
+    let groupBy = localStorage.getItem('groupBy') || 'category';  // «Отображать по»
+    let facet = '';       // выбранное значение в текущем срезе
+    let searchText = '';
 
     function toast(msg) {
       const t = $('toast'); t.textContent = msg; t.classList.add('show');
@@ -240,7 +246,7 @@
       setChip('stat-value', stats.totalValue > 0, `💰 ${formatMoney(stats.totalValue)}`);
       setChip('stat-sale', stats.forSale > 0, `🏷 ${stats.forSale} на продажу`);
 
-      buildSort();
+      buildGroupBy();
       buildFilters();
       $('toolbar').style.display = allItems.length ? 'flex' : 'none';
       applyFilters();
@@ -260,50 +266,60 @@
       return 'вещей';
     }
 
-    // ── Тулбар: сортировка + фильтры ──
-    function buildSort() {
-      const sel = $('sort');
-      if (sel.dataset.built) { sel.value = sortKey; return; }
-      sel.innerHTML = SORT_OPTIONS.map(o => `<option value="${o.id}">${esc(o.label)}</option>`).join('');
-      sel.value = sortKey;
-      sel.onchange = () => { sortKey = sel.value; localStorage.setItem('itemsSort', sortKey); applyFilters(); };
-      sel.dataset.built = '1';
+    // ── Тулбар: «Отображать по» (срез) + фильтры-чипы ──
+    function buildGroupBy() {
+      const sel = $('group-by');
+      if (!sel.dataset.built) {
+        sel.innerHTML = DISPLAY_DIMENSIONS.map(d => `<option value="${d.id}">${esc(d.label)}</option>`).join('');
+        sel.onchange = () => {
+          groupBy = sel.value; localStorage.setItem('groupBy', groupBy);
+          facet = '';           // при смене среза сбрасываем выбранный фильтр
+          buildFilters(); applyFilters();
+        };
+        sel.dataset.built = '1';
+      }
+      sel.value = groupBy;
     }
 
+    // Значения текущего среза → [значение, подпись].
+    function facetOptions() {
+      switch (groupBy) {
+        case 'tag':      return taxonomy.tags.map(t => [t.id, t.label]);
+        case 'status':   return ITEM_STATUSES.map(s => [s, statusLabel(s)]);
+        case 'location': return collectLocations(allItems).map(l => [l, l]);
+        case 'room':     return collectRooms(allItems).map(r => [r, r]);
+        case 'category':
+        default:         return taxonomy.categories.map(c => [c.id, c.label]);
+      }
+    }
     function buildFilters() {
-      const chips = [];
-      for (const c of taxonomy.categories) chips.push(chipHtml('category', c.id, c.label, '📁'));
-      for (const t of taxonomy.tags) chips.push(chipHtml('tag', t.id, t.label, '🏷'));
-      for (const s of ITEM_STATUSES) chips.push(chipHtml('status', s, statusLabel(s), '•'));
-      $('filters').innerHTML = chips.join('');
+      const opts = facetOptions();
+      $('filters').innerHTML = opts.length
+        ? opts.map(([val, label]) => `<button type="button" class="chip" data-val="${esc(val)}">${esc(label)}</button>`).join('')
+        : '<span class="hint">Нет значений для этого среза.</span>';
       $('filters').querySelectorAll('.chip').forEach(ch => ch.onclick = () => {
-        const { dim, val } = ch.dataset;
-        filters[dim] = filters[dim] === val ? '' : val; // toggle
+        facet = facet === ch.dataset.val ? '' : ch.dataset.val;  // toggle
         syncChipState(); applyFilters();
       });
       syncChipState();
     }
-    function chipHtml(dim, val, label, icon) {
-      return `<button type="button" class="chip" data-dim="${dim}" data-val="${esc(val)}">${icon} ${esc(label)}</button>`;
-    }
     function syncChipState() {
-      $('filters').querySelectorAll('.chip').forEach(ch => {
-        ch.classList.toggle('on', filters[ch.dataset.dim] === ch.dataset.val);
-      });
-      const any = filters.text || filters.category || filters.tag || filters.status;
-      $('filter-clear').style.display = any ? '' : 'none';
+      $('filters').querySelectorAll('.chip').forEach(ch => ch.classList.toggle('on', facet === ch.dataset.val));
+      $('filter-clear').style.display = (searchText || facet) ? '' : 'none';
     }
 
-    $('search').oninput = (e) => { filters.text = e.target.value; syncChipState(); applyFilters(); };
+    $('search').oninput = (e) => { searchText = e.target.value; syncChipState(); applyFilters(); };
     $('filter-clear').onclick = () => {
-      filters.text = filters.category = filters.tag = filters.status = '';
+      searchText = ''; facet = '';
       $('search').value = '';
       syncChipState(); applyFilters();
     };
 
     let visibleItems = [];   // текущий отфильтрованный/отсортированный список
     function applyFilters() {
-      visibleItems = sortItems(filterItems(allItems, filters), sortKey);
+      const f = { text: searchText };
+      if (facet) f[groupBy] = facet;   // groupBy ∈ category|tag|status|location|room
+      visibleItems = sortItems(filterItems(allItems, f), sortKey);
       renderItems(visibleItems);
     }
 

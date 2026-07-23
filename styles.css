@@ -161,6 +161,9 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .search-input{flex:1;padding:11px 14px;border-radius:12px;border:2px solid var(--border);font-family:'DM Sans',sans-serif;font-size:15px;color:var(--text);outline:none;background:var(--white);}
 .search-input:focus{border-color:var(--blue);}
 .sort-select{flex:0 0 auto;width:auto;padding:11px 34px 11px 12px;font-size:13px;}
+.group-row{display:flex;align-items:center;gap:10px;}
+.group-label{font-size:13px;font-weight:600;color:var(--text-soft);white-space:nowrap;}
+.group-row .select-input{flex:1;padding:9px 34px 9px 12px;font-size:14px;}
 .filter-scroll{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;}
 .filter-scroll .chip{white-space:nowrap;flex:0 0 auto;padding:6px 12px;}
 .filter-clear{background:none;border:none;color:var(--blue);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;padding:2px 0;}
