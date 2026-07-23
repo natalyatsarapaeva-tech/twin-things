@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   stripJsonFences, parseAiJsonArray, sanitizeAiItems, CHAR_TYPES,
+  parseAiJsonObject, sanitizeAiDescription,
 } from '../js/catalog-core.js';
 
 test('stripJsonFences: убирает ```json и ``` ограждение', () => {
@@ -88,4 +89,30 @@ test('sanitizeAiItems: не-массив на входе → пустой рез
   assert.deepEqual(sanitizeAiItems(null, {}), []);
   assert.deepEqual(sanitizeAiItems({}, {}), []);
   assert.deepEqual(sanitizeAiItems('строка', {}), []);
+});
+
+test('parseAiJsonObject: объект, обёртка, массив→первый, мусор→{}', () => {
+  assert.deepEqual(parseAiJsonObject('{"description":"A"}'), { description: 'A' });
+  assert.deepEqual(parseAiJsonObject('```json\n{"description":"B"}\n```'), { description: 'B' });
+  assert.deepEqual(parseAiJsonObject('текст {"description":"C"} хвост'), { description: 'C' });
+  assert.deepEqual(parseAiJsonObject('[{"description":"D"}]'), { description: 'D' });
+  assert.deepEqual(parseAiJsonObject('не json'), {});
+});
+
+test('sanitizeAiDescription: описание + характеристики + теги из id', () => {
+  const raw = {
+    description: '  Синяя куртка  ',
+    characteristics: [
+      { label: 'Цвет', value: 'синий', type: 'text' },
+      { label: 'Цена', value: '2000', type: 'money' },
+      { label: '', value: '' },
+    ],
+    tags: ['seasonal', 'unknown'],
+  };
+  const out = sanitizeAiDescription(raw, { tagIds: ['seasonal', 'fragile'] });
+  assert.equal(out.description, 'Синяя куртка');
+  assert.equal(out.characteristics.length, 2);
+  assert.deepEqual(out.tags, ['seasonal']); // unknown отброшен
+  // мусор на входе → безопасные пустые значения
+  assert.deepEqual(sanitizeAiDescription(null, {}), { description: '', characteristics: [], tags: [] });
 });

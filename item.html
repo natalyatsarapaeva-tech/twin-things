@@ -63,6 +63,8 @@
         <div class="hint">Изменения фото сохраняются сразу.</div>
       </div>
 
+      <button class="btn btn-ghost btn-block" id="btn-describe" type="button">✨ Описать по фото</button>
+
       <div class="field-group">
         <label class="field-label" for="f-name">Название *</label>
         <input class="field-input" id="f-name" autocomplete="off">
@@ -122,6 +124,7 @@
     import {
       templateCharacteristics, ITEM_STATUSES, statusLabel, labelOf, primaryPhoto,
     } from './js/catalog-core.js';
+    import { describeItemFromPhoto } from './js/ai.js';
 
     const $ = (id) => document.getElementById(id);
     const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -272,6 +275,39 @@
       });
     }
     $('btn-add-char').onclick = () => { chars.push({ label:'', value:'', type:'text' }); renderChars(); };
+
+    // §8.3 — авто-описание по фото. Заполняет форму редактирования; сохраняешь ты.
+    $('btn-describe').onclick = async () => {
+      const photo = primaryPhoto(item);
+      if (!photo) { toast('Сначала добавь фото'); return; }
+      $('btn-describe').disabled = true;
+      busy(true, 'ИИ описывает по фото…');
+      try {
+        // Синхронизируем текущие правки формы, чтобы промпт знал актуальные имя/категорию.
+        const ctx = { name: $('f-name').value.trim() || item.name, category: $('f-category').value || item.category };
+        const res = await describeItemFromPhoto(photo.url, ctx, taxonomy.categories, taxonomy.tags);
+        busy(false);
+        // Описание: пустое поле — заполняем; заполненное — спрашиваем.
+        if (res.description) {
+          const cur = $('f-description').value.trim();
+          if (!cur || confirm('Заменить текущее описание на предложенное ИИ?')) $('f-description').value = res.description;
+        }
+        // Характеристики: добавляем предложенные, которых ещё нет (по метке).
+        const have = new Set(chars.map(c => (c.label||'').toLowerCase()));
+        let added = 0;
+        for (const c of res.characteristics) {
+          if (c.label && !have.has(c.label.toLowerCase())) { chars.push(c); have.add(c.label.toLowerCase()); added++; }
+        }
+        if (added) renderChars();
+        // Теги: досоставляем предложенные.
+        let addedTags = 0;
+        for (const t of res.tags) if (!selectedTags.has(t)) { selectedTags.add(t); addedTags++; }
+        if (addedTags) buildTagChips();
+        toast(`ИИ дополнил${added?`: +${added} хар-к`:''}${addedTags?`, +${addedTags} тег`:''}. Проверь и сохрани.`);
+      } catch (err) {
+        console.error(err); busy(false); toast('Ошибка ИИ: ' + (err.message || 'сбой'));
+      } finally { $('btn-describe').disabled = false; }
+    };
 
     // ── Фото в режиме редактирования (persist сразу) ──
     function renderEditPhotos(){

@@ -97,6 +97,11 @@
           <button class="chip" id="ai-tab-text" type="button">📝 По тексту</button>
         </div>
 
+        <label class="ai-detailed-toggle">
+          <input type="checkbox" id="ai-detailed" checked>
+          <span>✨ Сразу писать подробные описания</span>
+        </label>
+
         <!-- Фото → вещи -->
         <div class="ai-tab-panel" id="ai-photo-panel" style="margin-top:12px;">
           <div class="ai-hint-box">Сфотографируй полку или вещи — ИИ распознает объекты и предложит карточки. Исходные фото прикрепятся к найденным вещам.</div>
@@ -347,7 +352,7 @@
         const base64 = [];
         for (const p of aiPhotos) { const { main } = await compressForUpload(p.file); base64.push(await blobToBase64(main.blob)); }
         busy(true, 'ИИ анализирует фото…');
-        drafts = await aiItemsFromPhotos(base64, taxonomy.categories, taxonomy.tags);
+        drafts = await aiItemsFromPhotos(base64, taxonomy.categories, taxonomy.tags, $('ai-detailed').checked);
         busy(false);
         if (!drafts.length) { toast('ИИ не нашёл вещей — попробуй другое фото'); return; }
         draftSel = drafts.map(() => true);
@@ -363,7 +368,7 @@
       $('btn-analyze-text').disabled = true;
       busy(true, 'ИИ разбирает текст…');
       try {
-        drafts = await aiItemsFromText(text, taxonomy.categories, taxonomy.tags);
+        drafts = await aiItemsFromText(text, taxonomy.categories, taxonomy.tags, $('ai-detailed').checked);
         busy(false);
         if (!drafts.length) { toast('ИИ не распознал вещей'); return; }
         draftSel = drafts.map(() => true);

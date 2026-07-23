@@ -2,7 +2,7 @@
 // Вызовы GPT-4o (текст + vision) идут через Cloudflare Worker `/ai` — прокси
 // OpenAI (ключ на стороне воркера, в браузер не попадает). Origin github.io уже
 // в allow-list воркера, так что отдельная настройка не нужна.
-import { parseAiJsonArray, sanitizeAiItems } from './catalog-core.js';
+import { parseAiJsonArray, parseAiJsonObject, sanitizeAiItems, sanitizeAiDescription } from './catalog-core.js';
 
 // Тот же воркер, что у twin (task-intake-worker). Endpoint /ai — тонкий прокси:
 // принимает payload OpenAI chat completions, возвращает ответ OpenAI.
@@ -23,9 +23,19 @@ export async function gpt(payload) {
 // и требует «только JSON, категории/теги — только из предложенных id» (§9).
 // photoCount>0 — vision-режим: просим у модели photoIndex, чтобы привязать одно
 // фото к одной карточке (а не все фото ко всем).
-function systemPrompt(categories, tags, photoCount = 0) {
-  const cats = categories.map(c => `${c.id} (${c.label})`).join(', ') || 'generic (Разное)';
-  const tg = tags.map(t => `${t.id} (${t.label})`).join(', ') || '—';
+// taxonomy → строки для промпта.
+function taxLines(categories, tags) {
+  return {
+    cats: categories.map(c => `${c.id} (${c.label})`).join(', ') || 'generic (Разное)',
+    tg: tags.map(t => `${t.id} (${t.label})`).join(', ') || '—',
+  };
+}
+const descRule = (rich) => rich
+  ? '- description — 1–2 предложения по-русски: внешний вид, цвет, материал, состояние, заметные детали.'
+  : '- description — короткая заметка, если очевидна; иначе пустая строка.';
+
+function systemPrompt(categories, tags, photoCount = 0, rich = false) {
+  const { cats, tg } = taxLines(categories, tags);
   const photoField = photoCount > 0 ? ',"photoIndex":<номер фото>' : '';
   const photoRule = photoCount > 0
     ? `\n- photoIndex — номер фотографии (0..${photoCount - 1}), на которой находится эта вещь. Фото переданы по порядку. Обычно одна вещь = одно фото; если на одном фото несколько вещей, у них одинаковый photoIndex.`
@@ -37,18 +47,19 @@ function systemPrompt(categories, tags, photoCount = 0) {
 - name — короткое название вещи на русском.
 - category — РОВНО ОДИН id из списка: ${cats}. Если не уверен — "generic".
 - tags — ноль или несколько id ТОЛЬКО из: ${tg}. Не выдумывай новых.
-- characteristics — уместные известные факты (бренд, модель, цена, размер, материал…); значения на русском; для цены type "money", для дат "date", для чисел "number".${photoRule}
+- characteristics — уместные известные факты (бренд, модель, цена, размер, материал…); значения на русском; для цены type "money", для дат "date", для чисел "number".
+${descRule(rich)}${photoRule}
 - Не добавляй категории или теги вне указанных id. Каждая распознанная вещь — отдельный объект массива.`;
 }
 
 const ids = (list) => (list || []).map(x => x.id);
 
-// Текст/голос → черновики вещей (§8.2).
-export async function aiItemsFromText(text, categories, tags) {
+// Текст/голос → черновики вещей (§8.2). rich=true — просить подробные описания.
+export async function aiItemsFromText(text, categories, tags, rich = false) {
   const data = await gpt({
     model: 'gpt-4o', max_tokens: 2000, temperature: 0,
     messages: [
-      { role: 'system', content: systemPrompt(categories, tags) },
+      { role: 'system', content: systemPrompt(categories, tags, 0, rich) },
       { role: 'user', content: 'Список вещей:\n\n' + text },
     ],
   });
@@ -57,7 +68,7 @@ export async function aiItemsFromText(text, categories, tags) {
 }
 
 // Фото → черновики вещей (§8.1, vision). base64List — JPEG без префикса data:.
-export async function aiItemsFromPhotos(base64List, categories, tags) {
+export async function aiItemsFromPhotos(base64List, categories, tags, rich = false) {
   const list = base64List || [];
   const images = list.map(b => ({
     type: 'image_url',
@@ -66,7 +77,7 @@ export async function aiItemsFromPhotos(base64List, categories, tags) {
   const data = await gpt({
     model: 'gpt-4o', max_tokens: 2000, temperature: 0,
     messages: [
-      { role: 'system', content: systemPrompt(categories, tags, list.length) },
+      { role: 'system', content: systemPrompt(categories, tags, list.length, rich) },
       { role: 'user', content: [...images, { type: 'text', text: 'Определи вещи на фото и верни JSON-массив. У каждой вещи укажи photoIndex — номер фото, на котором она есть.' }] },
     ],
   });
@@ -74,4 +85,31 @@ export async function aiItemsFromPhotos(base64List, categories, tags) {
   return sanitizeAiItems(parseAiJsonArray(content), {
     categoryIds: ids(categories), tagIds: ids(tags), photoCount: list.length,
   });
+}
+
+// §8.3 — авто-описание ОДНОЙ вещи по её фото. photoUrl — download-URL из Storage
+// (GPT-4o vision забирает картинку по URL на своей стороне, без CORS/повторной
+// загрузки). Возвращает {description, characteristics[], tags[]}.
+export async function describeItemFromPhoto(photoUrl, item, categories, tags) {
+  const { cats, tg } = taxLines(categories, tags);
+  const system = `Ты помощник по учёту домашних вещей. По фото опиши вещь и предложи характеристики. Верни ТОЛЬКО JSON-объект, без markdown:
+{"description":"...","characteristics":[{"label":"...","value":"...","type":"text|number|money|date|select"}],"tags":["<id тегов>"]}
+
+Правила:
+${descRule(true)}
+- characteristics — уместные факты по фото (цвет, материал, размер, бренд, состояние…), значения по-русски; для цены type "money", дат "date", чисел "number".
+- tags — ноль или несколько id ТОЛЬКО из: ${tg}. Категории (для справки): ${cats}. Не выдумывай тегов вне списка.`;
+  const hint = `Вещь называется «${item?.name || ''}»${item?.category ? `, категория: ${item.category}` : ''}. Опиши её по фото.`;
+  const data = await gpt({
+    model: 'gpt-4o', max_tokens: 700, temperature: 0.3,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: [
+        { type: 'image_url', image_url: { url: photoUrl, detail: 'high' } },
+        { type: 'text', text: hint },
+      ] },
+    ],
+  });
+  const content = data.choices?.[0]?.message?.content || '';
+  return sanitizeAiDescription(parseAiJsonObject(content), { tagIds: ids(tags) });
 }

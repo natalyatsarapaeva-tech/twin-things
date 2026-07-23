@@ -342,3 +342,34 @@ export function sanitizeAiItems(raw, { categoryIds = [], tagIds = [], photoCount
   }
   return out;
 }
+
+// Разбор одиночного JSON-объекта из ответа модели (для авто-описания §8.3).
+export function parseAiJsonObject(content) {
+  const cleaned = stripJsonFences(content);
+  try {
+    const v = JSON.parse(cleaned);
+    if (Array.isArray(v)) return (v[0] && typeof v[0] === 'object') ? v[0] : {};
+    if (v && typeof v === 'object') return v;
+  } catch (_) { /* попробуем вырезать объект */ }
+  const s = cleaned.indexOf('{'), e = cleaned.lastIndexOf('}');
+  if (s !== -1 && e > s) {
+    try { const v = JSON.parse(cleaned.slice(s, e + 1)); if (v && typeof v === 'object') return v; } catch (_) {}
+  }
+  return {};
+}
+
+// Санитайзинг ответа авто-описания одной вещи: описание + предложенные
+// характеристики (валидный type) + теги (только известные id каталога).
+export function sanitizeAiDescription(raw, { tagIds = [] } = {}) {
+  const r = (raw && typeof raw === 'object') ? raw : {};
+  const tags = new Set(tagIds);
+  const characteristics = (Array.isArray(r.characteristics) ? r.characteristics : [])
+    .map(c => ({
+      label: String(c?.label || '').trim(),
+      value: String(c?.value ?? '').trim(),
+      type: CHAR_TYPES.includes(c?.type) ? c.type : 'text',
+    }))
+    .filter(c => c.label || c.value);
+  const itemTags = Array.isArray(r.tags) ? r.tags.filter(t => tags.has(t)) : [];
+  return { description: String(r.description || '').trim(), characteristics, tags: itemTags };
+}
